@@ -25,6 +25,8 @@ from oslo.config import cfg
 from ceilometer import sample
 from ceilometer import plugin
 
+from ceilometer.vm_states import states
+
 
 OPTS = [
     cfg.StrOpt('nova_control_exchange',
@@ -48,6 +50,27 @@ class ComputeNotificationBase(plugin.NotificationBase):
                 topics=set(topic + ".info"
                            for topic in conf.notification_topics)),
         ]
+
+
+class InstanceState(ComputeNotificationBase):
+    """Convert compute.instance.* notifications into Samples
+    """
+
+    event_types = ['compute.instance.*']
+
+    def process_notification(self, message):
+
+        state = message['payload']['state']
+
+        yield sample.Sample.from_notification(
+            name='state',
+            type=sample.TYPE_GAUGE,
+            unit='state',
+            volume=states[state],
+            user_id=message['payload']['user_id'],
+            project_id=message['payload']['tenant_id'],
+            resource_id=message['payload']['instance_id'],
+            message=message)
 
 
 class InstanceScheduled(ComputeNotificationBase):
