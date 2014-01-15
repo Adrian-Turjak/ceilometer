@@ -1,5 +1,6 @@
 from nova.compute import vm_states as vm
 
+
 """"Mapping of Nova VM states to ints for use in metering. """
 states = {vm.ACTIVE: 1,
           vm.BUILDING: 2,
