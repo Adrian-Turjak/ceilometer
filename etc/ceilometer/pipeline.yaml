@@ -22,3 +22,18 @@
                   scale: "100.0 / (10**9 * (resource_metadata.cpu_number or 1))"
     publishers:
         - rpc://
+-
+    name: uptime_pipeline
+    interval: 600
+    meters:
+        - "state"
+    transformers:
+        - name: "uptime"
+          parameters:
+              target:
+                  name: "uptime"
+                  unit: "second"
+                  type: "cumulative"
+                  active: [1, 2, 3, 6, 7]
+    publishers:
+        - rpc://
