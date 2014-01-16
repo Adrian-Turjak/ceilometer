@@ -78,7 +78,7 @@ class UptimeTransformer(transformer.TransformerBase):
                     # no uptime for this key yet!
                     self.cache_uptime[key] = difference
 
-                s = self._package(s, self.cache_uptime[key])
+            s = self._package(s, self.cache_uptime[key])
         else:
             LOG.warn(_('dropping sample with no predecessor: %s') %
                      (s,))
