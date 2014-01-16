@@ -61,13 +61,13 @@ class UptimeTransformer(transformer.TransformerBase):
 
     def handle_sample(self, context, s):
         """Handle a sample."""
-        LOG.warn(_('THIS TRANSFORMER IS: %s') % (str(self),))
-        LOG.warn(_('THIS resource_id IS: %s') % (s.resource_id,))
+        LOG.info(('THIS TRANSFORMER IS: %s') % (str(self),))
+        LOG.info(('THIS resource_id IS: %s') % (s.resource_id,))
         key = s.resource_id
         prev = self.cache_prev.get(key)
         timestamp = timeutils.parse_isotime(s.timestamp)
         self.cache_prev[key] = (s.volume, timestamp)
-        LOG.warn(_('ALL uptime: %s') % (self.cache_uptime,))
+        LOG.info(('ALL uptime: %s') % (self.cache_uptime))
 
         if prev:
             prev_timestamp = prev[1]
