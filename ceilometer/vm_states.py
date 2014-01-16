@@ -5,7 +5,7 @@ from nova.compute import vm_states as vm
 states = {vm.ACTIVE: 1,
           vm.BUILDING: 2,
           vm.PAUSED: 3,
-          vm.SUSPENDING: 4,
+          vm.SUSPENDED: 4,
           vm.STOPPED: 5,
           vm.RESCUED: 6,
           vm.RESIZED: 7,
