@@ -25,6 +25,16 @@ from ceilometer import transformer
 LOG = log.getLogger(__name__)
 
 
+import logging
+import logging.handlers
+
+my_logger = logging.getLogger('MyLogger')
+my_logger.setLevel(logging.DEBUG)
+
+handler = logging.handlers.SysLogHandler()
+my_logger.addHandler(handler)
+
+
 class UptimeTransformer(transformer.TransformerBase):
     """Transformer to create uptime.
     """
@@ -61,13 +71,13 @@ class UptimeTransformer(transformer.TransformerBase):
 
     def handle_sample(self, context, s):
         """Handle a sample."""
-        LOG.info(('THIS TRANSFORMER IS: %s') % (str(self),))
-        LOG.info(('THIS resource_id IS: %s') % (s.resource_id,))
+        my_logger.critical(('THIS TRANSFORMER IS: %s') % (str(self),))
+        my_logger.critical(('THIS resource_id IS: %s') % (s.resource_id,))
         key = s.resource_id
         prev = self.cache_prev.get(key)
         timestamp = timeutils.parse_isotime(s.timestamp)
         self.cache_prev[key] = (s.volume, timestamp)
-        LOG.info(('ALL uptime: %s') % (self.cache_uptime))
+        my_logger.critical(('ALL uptime: %s') % (self.cache_uptime))
 
         if prev:
             prev_timestamp = prev[1]
