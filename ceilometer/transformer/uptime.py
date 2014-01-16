@@ -61,7 +61,7 @@ class UptimeTransformer(transformer.TransformerBase):
 
     def handle_sample(self, context, s):
         """Handle a sample."""
-        key = s.name + s.resource_id
+        key = s.resource_id
         prev = self.cache_prev.get(key)
         timestamp = timeutils.parse_isotime(s.timestamp)
         self.cache_prev[key] = (s.volume, timestamp)
