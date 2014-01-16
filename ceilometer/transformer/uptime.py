@@ -31,7 +31,7 @@ import logging.handlers
 my_logger = logging.getLogger('MyLogger')
 my_logger.setLevel(logging.DEBUG)
 
-handler = logging.handlers.SysLogHandler()
+handler = logging.handlers.SysLogHandler(address='/dev/log')
 my_logger.addHandler(handler)
 
 
