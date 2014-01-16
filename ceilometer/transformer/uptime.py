@@ -71,13 +71,14 @@ class UptimeTransformer(transformer.TransformerBase):
 
     def handle_sample(self, context, s):
         """Handle a sample."""
-        my_logger.critical(('THIS TRANSFORMER IS: %s') % (str(self),))
-        my_logger.critical(('THIS resource_id IS: %s') % (s.resource_id,))
+        my_logger.critical("******************************************* HERE? ***********************************************")
+        my_logger.critical('THIS TRANSFORMER IS: %s' % str(self))
+        my_logger.critical('THIS resource_id IS: %s' % s.resource_id)
         key = s.resource_id
         prev = self.cache_prev.get(key)
         timestamp = timeutils.parse_isotime(s.timestamp)
         self.cache_prev[key] = (s.volume, timestamp)
-        my_logger.critical(('ALL uptime: %s') % (self.cache_uptime))
+        my_logger.critical('ALL uptime: %s' % self.cache_uptime)
 
         if prev:
             prev_timestamp = prev[1]
