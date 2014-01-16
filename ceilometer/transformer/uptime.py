@@ -67,6 +67,7 @@ class UptimeTransformer(transformer.TransformerBase):
         prev = self.cache_prev.get(key)
         timestamp = timeutils.parse_isotime(s.timestamp)
         self.cache_prev[key] = (s.volume, timestamp)
+        LOG.warn(_('ALL uptime: %s') % (self.cache_uptime,))
 
         if prev:
             prev_timestamp = prev[1]
