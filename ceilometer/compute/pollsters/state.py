@@ -18,7 +18,7 @@ class StatePollster(plugin.ComputePollster):
 
         yield util.make_sample_from_instance(
             instance,
-            name='state2',
+            name='state',
             type=sample.TYPE_GAUGE,
             unit='state',
             volume=state,
