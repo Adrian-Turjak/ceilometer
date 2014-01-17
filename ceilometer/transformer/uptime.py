@@ -1,21 +1,3 @@
-# -*- encoding: utf-8 -*-
-#
-# Copyright © 2013 Red Hat, Inc
-#
-# Author: Eoghan Glynn <eglynn@redhat.com>
-#
-# Licensed under the Apache License, Version 2.0 (the "License"); you may
-# not use this file except in compliance with the License. You may obtain
-# a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
-# License for the specific language governing permissions and limitations
-# under the License.
-
 from ceilometer import sample
 from ceilometer.openstack.common.gettextutils import _
 from ceilometer.openstack.common import log
@@ -78,7 +60,6 @@ class UptimeTransformer(transformer.TransformerBase):
         prev = self.cache_prev.get(key)
         timestamp = timeutils.parse_isotime(s.timestamp)
         self.cache_prev[key] = (s.volume, timestamp)
-        my_logger.critical('ALL uptime: %s' % self.cache_uptime)
 
         if prev:
             prev_timestamp = prev[1]
@@ -102,4 +83,5 @@ class UptimeTransformer(transformer.TransformerBase):
             LOG.warn(_('dropping sample with no predecessor: %s') %
                      (s,))
 
+        my_logger.critical('ALL uptime: %s' % self.cache_uptime)
         return s
