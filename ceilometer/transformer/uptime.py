@@ -57,7 +57,6 @@ class UptimeTransformer(transformer.TransformerBase):
         my_logger.critical('THIS TRANSFORMER IS: %s' % str(self))
         my_logger.critical('THIS resource_id IS: %s' % s.resource_id)
         key = s.resource_id
-        my_logger.critical('THIS KEY IS: %s' % str(key))
         prev = self.cache_prev.get(key)
         timestamp = timeutils.parse_isotime(s.timestamp)
         self.cache_prev[key] = (s.volume, timestamp)
