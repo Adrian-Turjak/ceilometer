@@ -1,7 +1,7 @@
 ---
 -
     name: meter_pipeline
-    interval: 100
+    interval: 600
     meters:
         - "*"
     transformers:
@@ -9,7 +9,7 @@
         - rpc://
 -
     name: cpu_pipeline
-    interval: 100
+    interval: 600
     meters:
         - "cpu"
     transformers:
@@ -24,7 +24,7 @@
         - rpc://
 -
     name: uptime_pipeline
-    interval: 100
+    interval: 600
     meters:
         - "state"
     transformers:
