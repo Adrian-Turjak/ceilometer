@@ -9,6 +9,7 @@ LOG = log.getLogger(__name__)
 
 class FlavorPollster(plugin.ComputePollster):
 
+    @staticmethod
     def get_samples(self, manager, cache, instance):
 
         yield util.make_sample_from_instance(
