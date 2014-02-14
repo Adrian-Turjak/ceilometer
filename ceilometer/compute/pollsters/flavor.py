@@ -15,6 +15,6 @@ class FlavorPollster(plugin.ComputePollster):
             instance,
             name='flavor',
             type=sample.TYPE_GAUGE,
-            unit='state',
+            unit='flavor.id',
             volume=instance.flavor['id'],
         )
