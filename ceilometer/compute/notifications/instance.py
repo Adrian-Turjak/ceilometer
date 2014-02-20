@@ -23,7 +23,7 @@
 from ceilometer.compute import notifications
 from ceilometer import sample
 
-from ceilometer.vm_states import states
+from ceilometer import vm_states
 
 
 class InstanceScheduled(notifications.ComputeNotificationBase):
@@ -72,7 +72,7 @@ class InstanceState(ComputeInstanceNotificationBase):
             name='state',
             type=sample.TYPE_GAUGE,
             unit='state',
-            volume=states[state],
+            volume=vm_states.states[state],
             user_id=message['payload']['user_id'],
             project_id=message['payload']['tenant_id'],
             resource_id=message['payload']['instance_id'],
