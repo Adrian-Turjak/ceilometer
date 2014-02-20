@@ -431,6 +431,13 @@ class TestNotifications(test.BaseTestCase):
         c = counters[0]
         self.assertEqual(c.volume, 1)
 
+    def test_instance_create_state(self):
+        ic = instance.InstanceState()
+        counters = list(ic.process_notification(INSTANCE_CREATE_END))
+        self.assertEqual(len(counters), 1)
+        c = counters[0]
+        self.assertEqual(c.volume, 1)
+
     def test_instance_create_flavor(self):
         ic = instance.InstanceFlavor()
         counters = list(ic.process_notification(INSTANCE_CREATE_END))
@@ -472,6 +479,13 @@ class TestNotifications(test.BaseTestCase):
         counters = list(ic.process_notification(INSTANCE_EXISTS))
         self.assertEqual(len(counters), 1)
 
+    def test_instance_exists_state(self):
+        ic = instance.InstanceState()
+        counters = list(ic.process_notification(INSTANCE_EXISTS))
+        self.assertEqual(len(counters), 1)
+        c = counters[0]
+        self.assertEqual(c.volume, 1)
+
     def test_instance_exists_flavor(self):
         ic = instance.Instance()
         counters = list(ic.process_notification(INSTANCE_EXISTS))
@@ -481,6 +495,13 @@ class TestNotifications(test.BaseTestCase):
         ic = instance.Instance()
         counters = list(ic.process_notification(INSTANCE_DELETE_START))
         self.assertEqual(len(counters), 1)
+
+    def test_instance_delete_state(self):
+        ic = instance.InstanceState()
+        counters = list(ic.process_notification(INSTANCE_DELETE_START))
+        self.assertEqual(len(counters), 1)
+        c = counters[0]
+        self.assertEqual(c.volume, 1)
 
     def test_instance_delete_flavor(self):
         ic = instance.Instance()
@@ -493,6 +514,13 @@ class TestNotifications(test.BaseTestCase):
         self.assertEqual(len(counters), 1)
         c = counters[0]
         self.assertEqual(c.volume, 1)
+
+    def test_instance_finish_resize_state(self):
+        ic = instance.InstanceState()
+        counters = list(ic.process_notification(INSTANCE_FINISH_RESIZE_END))
+        self.assertEqual(len(counters), 1)
+        c = counters[0]
+        self.assertEqual(c.volume, 7)
 
     def test_instance_finish_resize_flavor(self):
         ic = instance.InstanceFlavor()
