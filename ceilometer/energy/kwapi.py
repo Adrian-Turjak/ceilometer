@@ -15,15 +15,15 @@
 # under the License.
 
 import datetime
-from oslo.config import cfg
 
 from keystoneclient import exceptions
+from oslo.config import cfg
 import requests
 
 from ceilometer.central import plugin
-from ceilometer import sample
-from ceilometer.openstack.common.gettextutils import _
+from ceilometer.openstack.common.gettextutils import _  # noqa
 from ceilometer.openstack.common import log
+from ceilometer import sample
 
 LOG = log.getLogger(__name__)
 
@@ -82,7 +82,7 @@ class _Base(plugin.CentralPollster):
 class EnergyPollster(_Base):
     """Measures energy consumption."""
 
-    def get_samples(self, manager, cache):
+    def get_samples(self, manager, cache, resources=[]):
         """Returns all samples."""
         for probe in self._iter_probes(manager.keystone, cache):
             yield sample.Sample(
@@ -102,7 +102,7 @@ class EnergyPollster(_Base):
 class PowerPollster(_Base):
     """Measures power consumption."""
 
-    def get_samples(self, manager, cache):
+    def get_samples(self, manager, cache, resources=[]):
         """Returns all samples."""
         for probe in self._iter_probes(manager.keystone, cache):
             yield sample.Sample(

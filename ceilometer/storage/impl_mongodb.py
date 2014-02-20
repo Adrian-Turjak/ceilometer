@@ -22,21 +22,22 @@
 
 import calendar
 import copy
+import json
 import operator
+import uuid
 import weakref
 
 import bson.code
 import bson.objectid
-import json
 import pymongo
 
 from oslo.config import cfg
 
+from ceilometer.openstack.common.gettextutils import _  # noqa
 from ceilometer.openstack.common import log
 from ceilometer import storage
 from ceilometer.storage import base
 from ceilometer.storage import models
-from ceilometer.openstack.common.gettextutils import _
 
 cfg.CONF.import_opt('time_to_live', 'ceilometer.storage',
                     group="database")
@@ -130,6 +131,8 @@ def make_query_from_filter(sample_filter, require_meter=True):
         q['resource_id'] = sample_filter.resource
     if sample_filter.source:
         q['source'] = sample_filter.source
+    if sample_filter.message_id:
+        q['message_id'] = sample_filter.message_id
 
     # so the samples call metadata resource_metadata, so we convert
     # to that.
@@ -302,6 +305,52 @@ class Connection(base.Connection):
     SORT_OPERATION_MAPPING = {'desc': (pymongo.DESCENDING, '$lt'),
                               'asc': (pymongo.ASCENDING, '$gt')}
 
+    MAP_RESOURCES = bson.code.Code("""
+    function () {
+        emit(this.resource_id,
+             {user_id: this.user_id,
+              project_id: this.project_id,
+              source: this.source,
+              first_timestamp: this.timestamp,
+              last_timestamp: this.timestamp,
+              metadata: this.resource_metadata})
+    }""")
+
+    REDUCE_RESOURCES = bson.code.Code("""
+    function (key, values) {
+        var merge = {user_id: values[0].user_id,
+                     project_id: values[0].project_id,
+                     source: values[0].source,
+                     first_timestamp: values[0].first_timestamp,
+                     last_timestamp: values[0].last_timestamp,
+                     metadata: values[0].metadata}
+        values.forEach(function(value) {
+            if (merge.first_timestamp - value.first_timestamp > 0) {
+                merge.first_timestamp = value.first_timestamp;
+                merge.user_id = value.user_id;
+                merge.project_id = value.project_id;
+                merge.source = value.source;
+            } else if (merge.last_timestamp - value.last_timestamp <= 0) {
+                merge.last_timestamp = value.last_timestamp;
+                merge.metadata = value.metadata;
+            }
+        });
+        return merge;
+      }""")
+
+    operators = {"<": "$lt",
+                 ">": "$gt",
+                 "<=": "$lte",
+                 "=<": "$lte",
+                 ">=": "$gte",
+                 "=>": "$gte",
+                 "!=": "$ne"}
+    complex_operators = {"or": "$or",
+                         "and": "$and"}
+
+    ordering_functions = {"asc": pymongo.ASCENDING,
+                          "desc": pymongo.DESCENDING}
+
     def __init__(self, conf):
         url = conf.database.connection
 
@@ -311,7 +360,7 @@ class Connection(base.Connection):
         # requires a new storage connection.
         self.conn = self.CONNECTION_POOL.connect(url)
 
-        # Require MongoDB 2.2 to use aggregate() and TTL
+        # Require MongoDB 2.2 to use TTL
         if self.conn.server_info()['versionArray'] < [2, 2]:
             raise storage.StorageBadVersion("Need at least MongoDB 2.2")
 
@@ -497,7 +546,7 @@ class Connection(base.Connection):
         if marker is not None:
             sort_criteria_list = []
 
-            for i in range(0, len(sort_keys)):
+            for i in range(len(sort_keys)):
                 sort_criteria_list.append(cls._recurse_sort_keys(
                                           sort_keys[:(len(sort_keys) - i)],
                                           marker, _op))
@@ -635,33 +684,29 @@ class Connection(base.Connection):
         sort_keys = base._handle_sort_key('resource')
         sort_instructions = self._build_sort_instructions(sort_keys)[0]
 
-        aggregate = self.db.meter.aggregate([
-            {"$match": q},
-            {"$sort": dict(sort_instructions)},
-            {"$group": {
-                "_id": "$resource_id",
-                "user_id": {"$first": "$user_id"},
-                "project_id": {"$first": "$project_id"},
-                "source": {"$first": "$source"},
-                "first_sample_timestamp": {"$min": "$timestamp"},
-                "last_sample_timestamp": {"$max": "$timestamp"},
-                "metadata": {"$first": "$resource_metadata"},
-                "meters_name": {"$push": "$counter_name"},
-                "meters_type": {"$push": "$counter_type"},
-                "meters_unit": {"$push": "$counter_unit"},
-            }},
-        ])
+        # use a unique collection name for the results collection,
+        # as result post-sorting (as oppposed to reduce pre-sorting)
+        # is not possible on an inline M-R
+        out = 'resource_list_%s' % uuid.uuid4()
+        self.db.meter.map_reduce(self.MAP_RESOURCES,
+                                 self.REDUCE_RESOURCES,
+                                 out=out,
+                                 sort={'resource_id': 1},
+                                 query=q)
 
-        for result in aggregate['result']:
-            yield models.Resource(
-                resource_id=result['_id'],
-                user_id=result['user_id'],
-                project_id=result['project_id'],
-                first_sample_timestamp=result['first_sample_timestamp'],
-                last_sample_timestamp=result['last_sample_timestamp'],
-                source=result['source'],
-                metadata=result['metadata'],
-            )
+        try:
+            for r in self.db[out].find(sort=sort_instructions):
+                resource = r['value']
+                yield models.Resource(
+                    resource_id=r['_id'],
+                    user_id=resource['user_id'],
+                    project_id=resource['project_id'],
+                    first_sample_timestamp=resource['first_timestamp'],
+                    last_sample_timestamp=resource['last_timestamp'],
+                    source=resource['source'],
+                    metadata=resource['metadata'])
+        finally:
+            self.db[out].drop()
 
     def get_meters(self, user=None, project=None, resource=None, source=None,
                    metaquery={}, pagination=None):
@@ -702,21 +747,14 @@ class Connection(base.Connection):
                     user_id=r['user_id'],
                 )
 
-    def get_samples(self, sample_filter, limit=None):
-        """Return an iterable of model.Sample instances.
-
-        :param sample_filter: Filter.
-        :param limit: Maximum number of results to return.
-        """
-        if limit == 0:
-            return
-        q = make_query_from_filter(sample_filter, require_meter=False)
-        if limit:
-            samples = self.db.meter.find(
-                q, limit=limit, sort=[("timestamp", pymongo.DESCENDING)])
+    def _retrieve_samples(self, query, orderby, limit):
+        if limit is not None:
+            samples = self.db.meter.find(query,
+                                         limit=limit,
+                                         sort=orderby)
         else:
-            samples = self.db.meter.find(
-                q, sort=[("timestamp", pymongo.DESCENDING)])
+            samples = self.db.meter.find(query,
+                                         sort=orderby)
 
         for s in samples:
             # Remove the ObjectId generated by the database when
@@ -726,6 +764,78 @@ class Connection(base.Connection):
             # Backward compatibility for samples without units
             s['counter_unit'] = s.get('counter_unit', '')
             yield models.Sample(**s)
+
+    def get_samples(self, sample_filter, limit=None):
+        """Return an iterable of model.Sample instances.
+
+        :param sample_filter: Filter.
+        :param limit: Maximum number of results to return.
+        """
+        if limit == 0:
+            return []
+        q = make_query_from_filter(sample_filter, require_meter=False)
+
+        return self._retrieve_samples(q,
+                                      [("timestamp", pymongo.DESCENDING)],
+                                      limit)
+
+    def _retrieve_data(self, filter_expr, orderby, limit, model):
+        if limit == 0:
+            return []
+        query_filter = {}
+        orderby_filter = [("timestamp", pymongo.DESCENDING)]
+        if orderby is not None:
+            orderby_filter = self._transform_orderby(orderby)
+        if filter_expr is not None:
+            query_filter = self._transform_filter(
+                filter_expr)
+
+        retrieve = {models.Meter: self._retrieve_samples,
+                    models.Alarm: self._retrieve_alarms,
+                    models.AlarmChange: self._retrieve_alarm_changes}
+        return retrieve[model](query_filter, orderby_filter, limit)
+
+    def query_samples(self, filter_expr=None, orderby=None, limit=None):
+        return self._retrieve_data(filter_expr, orderby, limit, models.Meter)
+
+    def _transform_orderby(self, orderby):
+        orderby_filter = []
+
+        for field in orderby:
+            field_name = field.keys()[0]
+            ordering = self.ordering_functions[field.values()[0]]
+            orderby_filter.append((field_name, ordering))
+        return orderby_filter
+
+    def _transform_filter(self, condition):
+
+        def process_json_tree(condition_tree):
+            operator_node = condition_tree.keys()[0]
+            nodes = condition_tree.values()[0]
+
+            if operator_node in self.complex_operators:
+                element_list = []
+                for node in nodes:
+                    element = process_json_tree(node)
+                    element_list.append(element)
+                complex_operator = self.complex_operators[operator_node]
+                op = {complex_operator: element_list}
+                return op
+            else:
+                field_name = nodes.keys()[0]
+                field_value = nodes.values()[0]
+                # no operator for equal in Mongo
+                if operator_node == "=":
+                    op = {field_name: field_value}
+                    return op
+                if operator_node in self.operators:
+                    operator = self.operators[operator_node]
+                    op = {
+                        field_name: {
+                            operator: field_value}}
+                    return op
+
+        return process_json_tree(condition)
 
     def get_meter_statistics(self, sample_filter, period=None, groupby=None):
         """Return an iterable of models.Statistics instance containing meter
@@ -840,6 +950,22 @@ class Connection(base.Connection):
         del alarm['matching_metadata']
         alarm['rule']['query'] = query
 
+    def _retrieve_alarms(self, query_filter, orderby, limit):
+        if limit is not None:
+            alarms = self.db.alarm.find(query_filter,
+                                        limit=limit,
+                                        sort=orderby)
+        else:
+            alarms = self.db.alarm.find(
+                query_filter, sort=orderby)
+
+        for alarm in alarms:
+            a = {}
+            a.update(alarm)
+            del a['_id']
+            self._ensure_encapsulated_rule_format(a)
+            yield models.Alarm(**a)
+
     def get_alarms(self, name=None, user=None,
                    project=None, enabled=None, alarm_id=None, pagination=None):
         """Yields a lists of alarms that match filters
@@ -865,12 +991,7 @@ class Connection(base.Connection):
         if alarm_id is not None:
             q['alarm_id'] = alarm_id
 
-        for alarm in self.db.alarm.find(q):
-            a = {}
-            a.update(alarm)
-            del a['_id']
-            self._ensure_encapsulated_rule_format(a)
-            yield models.Alarm(**a)
+        return self._retrieve_alarms(q, [], None)
 
     def update_alarm(self, alarm):
         """update alarm
@@ -890,9 +1011,24 @@ class Connection(base.Connection):
     create_alarm = update_alarm
 
     def delete_alarm(self, alarm_id):
-        """Delete a alarm
+        """Delete an alarm
         """
         self.db.alarm.remove({'alarm_id': alarm_id})
+
+    def _retrieve_alarm_changes(self, query_filter, orderby, limit):
+        if limit is not None:
+            alarms_history = self.db.alarm_history.find(query_filter,
+                                                        limit=limit,
+                                                        sort=orderby)
+        else:
+            alarms_history = self.db.alarm_history.find(
+                query_filter, sort=orderby)
+
+        for alarm_history in alarms_history:
+            ah = {}
+            ah.update(alarm_history)
+            del ah['_id']
+            yield models.AlarmChange(**ah)
 
     def get_alarm_changes(self, alarm_id, on_behalf_of,
                           user=None, project=None, type=None,
@@ -900,7 +1036,7 @@ class Connection(base.Connection):
                           end_timestamp=None, end_timestamp_op=None):
         """Yields list of AlarmChanges describing alarm history
 
-        Changes are always sorted in reverse order of occurence, given
+        Changes are always sorted in reverse order of occurrence, given
         the importance of currency.
 
         Segregation for non-administrative users is done on the basis
@@ -937,30 +1073,25 @@ class Connection(base.Connection):
             if ts_range:
                 q['timestamp'] = ts_range
 
-        sort = [("timestamp", pymongo.DESCENDING)]
-        for alarm_change in self.db.alarm_history.find(q, sort=sort):
-            ac = {}
-            ac.update(alarm_change)
-            del ac['_id']
-            yield models.AlarmChange(**ac)
+        return self._retrieve_alarm_changes(q,
+                                            [("timestamp",
+                                              pymongo.DESCENDING)],
+                                            None)
 
     def record_alarm_change(self, alarm_change):
         """Record alarm change event.
         """
         self.db.alarm_history.insert(alarm_change)
 
-    @staticmethod
-    def record_events(events):
-        """Write the events.
-
-        :param events: a list of model.Event objects.
+    def query_alarms(self, filter_expr=None, orderby=None, limit=None):
+        """Return an iterable of model.Alarm objects.
         """
-        raise NotImplementedError('Events not implemented.')
+        return self._retrieve_data(filter_expr, orderby, limit, models.Alarm)
 
-    @staticmethod
-    def get_events(event_filter):
-        """Return an iterable of model.Event objects.
-
-        :param event_filter: EventFilter instance
+    def query_alarm_history(self, filter_expr=None, orderby=None, limit=None):
+        """Return an iterable of model.AlarmChange objects.
         """
-        raise NotImplementedError('Events not implemented.')
+        return self._retrieve_data(filter_expr,
+                                   orderby,
+                                   limit,
+                                   models.AlarmChange)

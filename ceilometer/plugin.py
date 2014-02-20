@@ -21,7 +21,9 @@
 import abc
 import collections
 import fnmatch
+
 from oslo.config import cfg
+import six
 
 # Import this option so every Notification plugin can use it freely.
 cfg.CONF.import_opt('notification_topics',
@@ -37,10 +39,9 @@ class PluginBase(object):
     """
 
 
+@six.add_metaclass(abc.ABCMeta)
 class NotificationBase(PluginBase):
     """Base class for plugins that support the notification API."""
-
-    __metaclass__ = abc.ABCMeta
 
     @abc.abstractproperty
     def event_types(self):
@@ -85,13 +86,12 @@ class NotificationBase(PluginBase):
         return []
 
 
+@six.add_metaclass(abc.ABCMeta)
 class PollsterBase(PluginBase):
     """Base class for plugins that support the polling API."""
 
-    __metaclass__ = abc.ABCMeta
-
     @abc.abstractmethod
-    def get_samples(self, manager, cache):
+    def get_samples(self, manager, cache, resources=[]):
         """Return a sequence of Counter instances from polling the resources.
 
         :param manager: The service manager class invoking the plugin.
@@ -99,5 +99,8 @@ class PollsterBase(PluginBase):
                       between themselves when recomputing it would be
                       expensive (e.g., asking another service for a
                       list of objects).
+        :param resources: A list of the endpoints the pollster will get data
+                          from. It's up to the specific pollster to decide
+                          how to use it.
 
         """

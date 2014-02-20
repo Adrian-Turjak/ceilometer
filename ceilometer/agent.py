@@ -17,30 +17,40 @@
 # under the License.
 
 import abc
+import collections
 import itertools
+
+import six
 
 from ceilometer.openstack.common import context
 from ceilometer.openstack.common import log
+from ceilometer.openstack.common import service as os_service
 from ceilometer import pipeline
 from ceilometer import transformer
 
 LOG = log.getLogger(__name__)
 
 
+@six.add_metaclass(abc.ABCMeta)
 class PollingTask(object):
     """Polling task for polling samples and inject into pipeline.
     A polling task can be invoked periodically or only once.
-
     """
 
     def __init__(self, agent_manager):
         self.manager = agent_manager
         self.pollsters = set()
+        # Resource definitions are indexed by the pollster
+        # Use dict of set here to remove the duplicated resource definitions
+        # for each pollster.
+        self.resources = collections.defaultdict(set)
         self.publish_context = pipeline.PublishContext(
             agent_manager.context)
 
     def add(self, pollster, pipelines):
         self.publish_context.add_pipelines(pipelines)
+        for pipeline in pipelines:
+            self.resources[pollster.name].update(pipeline.resources)
         self.pollsters.update([pollster])
 
     @abc.abstractmethod
@@ -48,9 +58,11 @@ class PollingTask(object):
         """Polling sample and publish into pipeline."""
 
 
-class AgentManager(object):
+@six.add_metaclass(abc.ABCMeta)
+class AgentManager(os_service.Service):
 
     def __init__(self, extension_manager):
+        super(AgentManager, self).__init__()
 
         self.pollster_manager = extension_manager
 
@@ -66,7 +78,7 @@ class AgentManager(object):
                 self.pipeline_manager.pipelines,
                 self.pollster_manager.extensions):
             if pipeline.support_meter(pollster.name):
-                polling_task = polling_tasks.get(pipeline.interval, None)
+                polling_task = polling_tasks.get(pipeline.interval)
                 if not polling_task:
                     polling_task = self.create_polling_task()
                     polling_tasks[pipeline.interval] = polling_task
@@ -74,18 +86,17 @@ class AgentManager(object):
 
         return polling_tasks
 
-    def initialize_service_hook(self, service):
+    def start(self):
         self.pipeline_manager = pipeline.setup_pipeline(
             transformer.TransformerExtensionManager(
                 'ceilometer.transformer',
             ),
         )
 
-        self.service = service
         for interval, task in self.setup_polling_tasks().iteritems():
-            self.service.tg.add_timer(interval,
-                                      self.interval_task,
-                                      task=task)
+            self.tg.add_timer(interval,
+                              self.interval_task,
+                              task=task)
 
     @staticmethod
     def interval_task(task):

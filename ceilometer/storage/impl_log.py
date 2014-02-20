@@ -18,6 +18,7 @@
 """Simple logging storage backend.
 """
 
+from ceilometer.openstack.common.gettextutils import _  # noqa
 from ceilometer.openstack.common import log
 from ceilometer.storage import base
 
@@ -53,10 +54,11 @@ class Connection(base.Connection):
         :param data: a dictionary such as returned by
                      ceilometer.meter.meter_message_from_counter
         """
-        LOG.info('metering data %s for %s: %s',
-                 data['counter_name'],
-                 data['resource_id'],
-                 data['counter_volume'])
+        LOG.info(_('metering data %(counter_name)s for %(resource_id)s: '
+                   '%(counter_volume)s')
+                 % ({'counter_name': data['counter_name'],
+                     'resource_id': data['resource_id'],
+                     'counter_volume': data['counter_volume']}))
 
     def clear_expired_metering_data(self, ttl):
         """Clear expired data from the backend storage system according to the
@@ -65,7 +67,7 @@ class Connection(base.Connection):
         :param ttl: Number of seconds to keep records for.
 
         """
-        LOG.info("Dropping data with TTL %d", ttl)
+        LOG.info(_("Dropping data with TTL %d"), ttl)
 
     def get_users(self, source=None):
         """Return an iterable of user id strings.
@@ -113,7 +115,7 @@ class Connection(base.Connection):
         """Return an iterable of dictionaries containing meter information.
 
         { 'name': name of the meter,
-          'type': type of the meter (guage, counter),
+          'type': type of the meter (gauge, delta, cumulative),
           'resource_id': UUID of the resource,
           'project_id': UUID of project owning the resource,
           'user_id': UUID of user owning the resource,
@@ -174,53 +176,4 @@ class Connection(base.Connection):
         return alarm
 
     def delete_alarm(self, alarm_id):
-        """Delete a alarm
-        """
-
-    def get_alarm_changes(self, alarm_id, on_behalf_of,
-                          user=None, project=None, type=None,
-                          start_timestamp=None, start_timestamp_op=None,
-                          end_timestamp=None, end_timestamp_op=None):
-        """Yields list of AlarmChanges describing alarm history
-
-        Changes are always sorted in reverse order of occurence, given
-        the importance of currency.
-
-        Segregation for non-administrative users is done on the basis
-        of the on_behalf_of parameter. This allows such users to have
-        visibility on both the changes initiated by themselves directly
-        (generally creation, rule changes, or deletion) and also on those
-        changes initiated on their behalf by the alarming service (state
-        transitions after alarm thresholds are crossed).
-
-        :param alarm_id: ID of alarm to return changes for
-        :param on_behalf_of: ID of tenant to scope changes query (None for
-                             administrative user, indicating all projects)
-        :param user: Optional ID of user to return changes for
-        :param project: Optional ID of project to return changes for
-        :project type: Optional change type
-        :param start_timestamp: Optional modified timestamp start range
-        :param start_timestamp_op: Optional timestamp start range operation
-        :param end_timestamp: Optional modified timestamp end range
-        :param end_timestamp_op: Optional timestamp end range operation
-        """
-        raise NotImplementedError('Alarm history not implemented')
-
-    def record_alarm_change(self, alarm_change):
-        """Record alarm change event.
-        """
-        raise NotImplementedError('Alarm history not implemented')
-
-    def record_events(self, events):
-        """Write the events.
-
-        :param events: a list of model.Event objects.
-        """
-        raise NotImplementedError('Events not implemented.')
-
-    def get_events(self, event_filter):
-        """Return an iterable of model.Event objects.
-
-        :param event_filter: EventFilter instance
-        """
-        raise NotImplementedError('Events not implemented.')
+        """Delete an alarm."""

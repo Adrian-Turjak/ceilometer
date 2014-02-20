@@ -23,13 +23,14 @@ import collections
 from oslo.config import cfg
 from stevedore import driver
 
+from ceilometer.openstack.common.gettextutils import _  # noqa
 from ceilometer.openstack.common import log
 
 
 OPTS = [
     cfg.StrOpt('hypervisor_inspector',
                default='libvirt',
-               help='Inspector to use for inspecting the hypervisor layer'),
+               help='Inspector to use for inspecting the hypervisor layer.'),
 ]
 
 cfg.CONF.register_opts(OPTS)
@@ -151,5 +152,5 @@ def get_hypervisor_inspector():
                                    invoke_on_load=True)
         return mgr.driver
     except ImportError as e:
-        LOG.error("Unable to load the hypervisor inspector: %s" % (e))
+        LOG.error(_("Unable to load the hypervisor inspector: %s") % (e))
         return Inspector()

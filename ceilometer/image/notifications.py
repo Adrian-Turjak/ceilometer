@@ -21,13 +21,13 @@
 
 from oslo.config import cfg
 
-from ceilometer import sample
 from ceilometer import plugin
+from ceilometer import sample
 
 OPTS = [
     cfg.StrOpt('glance_control_exchange',
                default='glance',
-               help="Exchange name for Glance notifications"),
+               help="Exchange name for Glance notifications."),
 ]
 
 

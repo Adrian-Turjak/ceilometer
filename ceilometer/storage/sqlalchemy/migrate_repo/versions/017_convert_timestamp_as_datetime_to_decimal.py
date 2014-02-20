@@ -17,21 +17,11 @@
 # under the License.
 
 import sqlalchemy as sa
-from ceilometer.storage.sqlalchemy.models import PreciseTimestamp
+
+from ceilometer.storage.sqlalchemy import migration
+from ceilometer.storage.sqlalchemy import models
 
 _col = 'timestamp'
-
-
-def _paged(query, size):
-    offset = 0
-    while True:
-        page = query.offset(offset).limit(size).execute()
-        if page.rowcount <= 0:
-            # There are no more rows
-            break
-        for row in page:
-            yield row
-        offset += size
 
 
 def _convert_data_type(table, col, from_t, to_t, pk_attr='id', index=False):
@@ -48,7 +38,7 @@ def _convert_data_type(table, col, from_t, to_t, pk_attr='id', index=False):
     new_col = getattr(table.c, temp_col_n)
 
     query = sa.select([key_attr, orig_col])
-    for key, value in _paged(query, 1000):
+    for key, value in migration.paged(query):
         table.update().where(key_attr == key)\
             .values({temp_col_n: value}).execute()
 
@@ -62,7 +52,8 @@ def upgrade(migrate_engine):
     if migrate_engine.name == 'mysql':
         meta = sa.MetaData(bind=migrate_engine)
         meter = sa.Table('meter', meta, autoload=True)
-        _convert_data_type(meter, _col, sa.DateTime(), PreciseTimestamp(),
+        _convert_data_type(meter, _col, sa.DateTime(),
+                           models.PreciseTimestamp(),
                            pk_attr='id', index=True)
 
 
@@ -70,5 +61,5 @@ def downgrade(migrate_engine):
     if migrate_engine.name == 'mysql':
         meta = sa.MetaData(bind=migrate_engine)
         meter = sa.Table('meter', meta, autoload=True)
-        _convert_data_type(meter, _col, PreciseTimestamp(), sa.DateTime(),
-                           pk_attr='id', index=True)
+        _convert_data_type(meter, _col, models.PreciseTimestamp(),
+                           sa.DateTime(), pk_attr='id', index=True)

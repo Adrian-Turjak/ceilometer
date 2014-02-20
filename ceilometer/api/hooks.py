@@ -18,6 +18,7 @@
 # under the License.
 
 import threading
+
 from oslo.config import cfg
 from pecan import hooks
 
@@ -36,12 +37,10 @@ class ConfigHook(hooks.PecanHook):
 
 class DBHook(hooks.PecanHook):
 
-    def __init__(self, storage_engine, storage_connection):
-        self.storage_engine = storage_engine
+    def __init__(self, storage_connection):
         self.storage_connection = storage_connection
 
     def before(self, state):
-        state.request.storage_engine = self.storage_engine
         state.request.storage_conn = self.storage_connection
 
 
@@ -71,6 +70,9 @@ class TranslationHook(hooks.PecanHook):
         # where one pecan instance is being used to serve multiple request
         # threads.
         self.local_error = threading.local()
+        self.local_error.translatable_error = None
+
+    def before(self, state):
         self.local_error.translatable_error = None
 
     def after(self, state):

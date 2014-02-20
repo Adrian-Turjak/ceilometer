@@ -33,11 +33,14 @@ use = egg:ceilometer#swift
 # Some optional configuration
 # this allow to publish additional metadata
 metadata_headers = X-TEST
+
+# Set reseller prefix (defaults to "AUTH_" if not set)
+reseller_prefix = AUTH_
 """
 
 from __future__ import absolute_import
 
-from swift.common.utils import split_path, get_logger
+from swift.common import utils
 import webob
 
 REQUEST = webob
@@ -55,10 +58,10 @@ except ImportError:
     # Swift <= 1.7.5 ... module exists and has class.
     from swift.common.middleware.proxy_logging import InputProxy
 
-from ceilometer import sample
 from ceilometer.openstack.common import context
 from ceilometer.openstack.common import timeutils
 from ceilometer import pipeline
+from ceilometer import sample
 from ceilometer import service
 from ceilometer import transformer
 
@@ -68,7 +71,7 @@ class CeilometerMiddleware(object):
 
     def __init__(self, app, conf):
         self.app = app
-        self.logger = get_logger(conf, log_route='ceilometer')
+        self.logger = utils.get_logger(conf, log_route='ceilometer')
 
         self.metadata_headers = [h.strip().replace('-', '_').lower()
                                  for h in conf.get(
@@ -82,6 +85,9 @@ class CeilometerMiddleware(object):
                 'ceilometer.transformer',
             ),
         )
+        self.reseller_prefix = conf.get('reseller_prefix', 'AUTH_')
+        if self.reseller_prefix and self.reseller_prefix[-1] != '_':
+            self.reseller_prefix += '_'
 
     def __call__(self, env, start_response):
         start_response_args = [None]
@@ -119,7 +125,8 @@ class CeilometerMiddleware(object):
     def publish_sample(self, env, bytes_received, bytes_sent):
         req = REQUEST.Request(env)
         try:
-            version, account, container, obj = split_path(req.path, 2, 4, True)
+            version, account, container, obj = utils.split_path(req.path, 2,
+                                                                4, True)
         except ValueError:
             return
         now = timeutils.utcnow().isoformat()
@@ -146,7 +153,7 @@ class CeilometerMiddleware(object):
                     volume=bytes_received,
                     user_id=env.get('HTTP_X_USER_ID'),
                     project_id=env.get('HTTP_X_TENANT_ID'),
-                    resource_id=account.partition('AUTH_')[2],
+                    resource_id=account.partition(self.reseller_prefix)[2],
                     timestamp=now,
                     resource_metadata=resource_metadata)])
 
@@ -158,7 +165,7 @@ class CeilometerMiddleware(object):
                     volume=bytes_sent,
                     user_id=env.get('HTTP_X_USER_ID'),
                     project_id=env.get('HTTP_X_TENANT_ID'),
-                    resource_id=account.partition('AUTH_')[2],
+                    resource_id=account.partition(self.reseller_prefix)[2],
                     timestamp=now,
                     resource_metadata=resource_metadata)])
 
@@ -172,7 +179,7 @@ class CeilometerMiddleware(object):
                 volume=1,
                 user_id=env.get('HTTP_X_USER_ID'),
                 project_id=env.get('HTTP_X_TENANT_ID'),
-                resource_id=account.partition('AUTH_')[2],
+                resource_id=account.partition(self.reseller_prefix)[2],
                 timestamp=now,
                 resource_metadata=resource_metadata)])
 

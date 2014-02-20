@@ -28,7 +28,7 @@ import sys
 
 from oslo.config import cfg
 
-from ceilometer.publisher import rpc
+from ceilometer.publisher import utils
 from ceilometer import sample
 from ceilometer import storage
 from ceilometer.openstack.common import timeutils
@@ -44,48 +44,48 @@ def main():
         '--interval',
         default=10,
         type=int,
-        help='the period between events, in minutes',
+        help='The period between events, in minutes.',
     )
     parser.add_argument(
         '--start',
         default=31,
-        help='the number of days in the past to start timestamps',
+        help='The number of days in the past to start timestamps.',
     )
     parser.add_argument(
         '--end',
         default=2,
-        help='the number of days into the future to continue timestamps',
+        help='The number of days into the future to continue timestamps.',
     )
     parser.add_argument(
         '--type',
         choices=('gauge', 'cumulative'),
         default='gauge',
-        help='counter type',
+        help='Counter type.',
     )
     parser.add_argument(
         '--unit',
         default=None,
-        help='counter unit',
+        help='Counter unit.',
     )
     parser.add_argument(
         '--project',
-        help='project id of owner',
+        help='Project id of owner.',
     )
     parser.add_argument(
         '--user',
-        help='user id of owner',
+        help='User id of owner.',
     )
     parser.add_argument(
         'resource',
-        help='the resource id for the meter data',
+        help='The resource id for the meter data.',
     )
     parser.add_argument(
         'counter',
-        help='the counter name for the meter data',
+        help='The counter name for the meter data.',
     )
     parser.add_argument(
         'volume',
-        help='the amount to attach to the meter',
+        help='The amount to attach to the meter.',
         type=int,
         default=1,
     )
@@ -131,9 +131,9 @@ def main():
                             resource_metadata={},
                             source='artificial',
                             )
-        data = rpc.meter_message_from_counter(
+        data = utils.meter_message_from_counter(
             c,
-            cfg.CONF.publisher_rpc.metering_secret)
+            cfg.CONF.publisher.metering_secret)
         conn.record_metering_data(data)
         n += 1
         timestamp = timestamp + increment

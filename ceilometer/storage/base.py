@@ -21,7 +21,11 @@
 import abc
 import datetime
 import math
+import six
 
+from six import moves
+
+from ceilometer.openstack.common.gettextutils import _  # noqa
 from ceilometer.openstack.common import timeutils
 
 
@@ -37,7 +41,7 @@ def iter_period(start, end, period):
     """
     period_start = start
     increment = datetime.timedelta(seconds=period)
-    for i in xrange(int(math.ceil(
+    for i in moves.xrange(int(math.ceil(
             timeutils.delta_seconds(start, end)
             / float(period)))):
         next_start = period_start + increment
@@ -102,10 +106,9 @@ class Pagination(object):
         self.sort_dirs = sort_dirs
 
 
+@six.add_metaclass(abc.ABCMeta)
 class StorageEngine(object):
     """Base class for storage engines."""
-
-    __metaclass__ = abc.ABCMeta
 
     @abc.abstractmethod
     def get_connection(self, conf):
@@ -115,18 +118,16 @@ class StorageEngine(object):
 class Connection(object):
     """Base class for storage system connections."""
 
-    __metaclass__ = abc.ABCMeta
-
-    @abc.abstractmethod
-    def __init__(self, conf):
+    @staticmethod
+    def __init__(conf):
         """Constructor."""
 
-    @abc.abstractmethod
-    def upgrade(self):
+    @staticmethod
+    def upgrade():
         """Migrate the database to `version` or the most recent version."""
 
-    @abc.abstractmethod
-    def record_metering_data(self, data):
+    @staticmethod
+    def record_metering_data(data):
         """Write the data to the backend storage system.
 
         :param data: a dictionary such as returned by
@@ -134,32 +135,36 @@ class Connection(object):
 
         All timestamps must be naive utc datetime object.
         """
+        raise NotImplementedError(_('Projects not implemented'))
 
-    @abc.abstractmethod
-    def clear_expired_metering_data(self, ttl):
+    @staticmethod
+    def clear_expired_metering_data(ttl):
         """Clear expired data from the backend storage system according to the
         time-to-live.
 
         :param ttl: Number of seconds to keep records for.
 
         """
+        raise NotImplementedError(_('Clearing samples not implemented'))
 
-    @abc.abstractmethod
-    def get_users(self, source=None):
+    @staticmethod
+    def get_users(source=None):
         """Return an iterable of user id strings.
 
         :param source: Optional source filter.
         """
+        raise NotImplementedError(_('Users not implemented'))
 
-    @abc.abstractmethod
-    def get_projects(self, source=None):
+    @staticmethod
+    def get_projects(source=None):
         """Return an iterable of project id strings.
 
         :param source: Optional source filter.
         """
+        raise NotImplementedError(_('Projects not implemented'))
 
-    @abc.abstractmethod
-    def get_resources(self, user=None, project=None, source=None,
+    @staticmethod
+    def get_resources(user=None, project=None, source=None,
                       start_timestamp=None, start_timestamp_op=None,
                       end_timestamp=None, end_timestamp_op=None,
                       metaquery={}, resource=None, pagination=None):
@@ -177,9 +182,10 @@ class Connection(object):
         :param resource: Optional resource filter.
         :param pagination: Optional pagination query.
         """
+        raise NotImplementedError(_('Resources not implemented'))
 
-    @abc.abstractmethod
-    def get_meters(self, user=None, project=None, resource=None, source=None,
+    @staticmethod
+    def get_meters(user=None, project=None, resource=None, source=None,
                    metaquery={}, pagination=None):
         """Return an iterable of model.Meter instances containing meter
         information.
@@ -191,53 +197,57 @@ class Connection(object):
         :param metaquery: Optional dict with metadata to match on.
         :param pagination: Optional pagination query.
         """
+        raise NotImplementedError(_('Meters not implemented'))
 
-    @abc.abstractmethod
-    def get_samples(self, sample_filter, limit=None):
+    @staticmethod
+    def get_samples(sample_filter, limit=None):
         """Return an iterable of model.Sample instances.
 
         :param sample_filter: Filter.
         :param limit: Maximum number of results to return.
         """
+        raise NotImplementedError(_('Samples not implemented'))
 
-    @abc.abstractmethod
-    def get_meter_statistics(self, sample_filter, period=None, groupby=None):
+    @staticmethod
+    def get_meter_statistics(sample_filter, period=None, groupby=None):
         """Return an iterable of model.Statistics instances.
 
         The filter must have a meter value set.
         """
+        raise NotImplementedError(_('Statistics not implemented'))
 
-    @abc.abstractmethod
-    def get_alarms(self, name=None, user=None,
+    @staticmethod
+    def get_alarms(name=None, user=None,
                    project=None, enabled=None, alarm_id=None, pagination=None):
-        """Yields a lists of alarms that match filters
-        """
+        """Yields a lists of alarms that match filters."""
+        raise NotImplementedError(_('Alarms not implemented'))
 
-    @abc.abstractmethod
-    def create_alarm(self, alarm):
+    @staticmethod
+    def create_alarm(alarm):
         """Create an alarm. Returns the alarm as created.
 
         :param alarm: The alarm to create.
         """
+        raise NotImplementedError(_('Alarms not implemented'))
 
-    @abc.abstractmethod
-    def update_alarm(self, alarm):
-        """update alarm
-        """
+    @staticmethod
+    def update_alarm(alarm):
+        """Update alarm."""
+        raise NotImplementedError(_('Alarms not implemented'))
 
-    @abc.abstractmethod
-    def delete_alarm(self, alarm_id):
-        """Delete a alarm
-        """
+    @staticmethod
+    def delete_alarm(alarm_id):
+        """Delete an alarm."""
+        raise NotImplementedError(_('Alarms not implemented'))
 
-    @abc.abstractmethod
-    def get_alarm_changes(self, alarm_id, on_behalf_of,
+    @staticmethod
+    def get_alarm_changes(alarm_id, on_behalf_of,
                           user=None, project=None, type=None,
                           start_timestamp=None, start_timestamp_op=None,
                           end_timestamp=None, end_timestamp_op=None):
         """Yields list of AlarmChanges describing alarm history
 
-        Changes are always sorted in reverse order of occurence, given
+        Changes are always sorted in reverse order of occurrence, given
         the importance of currency.
 
         Segregation for non-administrative users is done on the basis
@@ -258,24 +268,90 @@ class Connection(object):
         :param end_timestamp: Optional modified timestamp end range
         :param end_timestamp_op: Optional timestamp end range operation
         """
+        raise NotImplementedError(_('Alarm history not implemented'))
 
-    @abc.abstractmethod
-    def record_alarm_change(self, alarm_change):
-        """Record alarm change event.
-        """
+    @staticmethod
+    def record_alarm_change(alarm_change):
+        """Record alarm change event."""
+        raise NotImplementedError(_('Alarm history not implemented'))
 
-    @abc.abstractmethod
-    def clear(self):
+    @staticmethod
+    def clear():
         """Clear database."""
 
-    @abc.abstractmethod
-    def record_events(self, events):
+    @staticmethod
+    def record_events(events):
         """Write the events to the backend storage system.
 
         :param events: a list of model.Event objects.
         """
+        raise NotImplementedError(_('Events not implemented.'))
 
-    @abc.abstractmethod
-    def get_events(self, event_filter):
+    @staticmethod
+    def get_events(event_filter):
         """Return an iterable of model.Event objects.
         """
+        raise NotImplementedError(_('Events not implemented.'))
+
+    @staticmethod
+    def get_event_types():
+        """Return all event types as an iterable of strings.
+        """
+        raise NotImplementedError(_('Events not implemented.'))
+
+    @staticmethod
+    def get_trait_types(event_type):
+        """Return a dictionary containing the name and data type of
+        the trait type. Only trait types for the provided event_type are
+        returned.
+
+        :param event_type: the type of the Event
+        """
+        raise NotImplementedError(_('Events not implemented.'))
+
+    @staticmethod
+    def get_traits(event_type, trait_type=None):
+        """Return all trait instances associated with an event_type. If
+        trait_type is specified, only return instances of that trait type.
+
+        :param event_type: the type of the Event to filter by
+        :param trait_type: the name of the Trait to filter by
+        """
+
+        raise NotImplementedError(_('Events not implemented.'))
+
+    @staticmethod
+    def query_samples(filter_expr=None, orderby=None, limit=None):
+        """Return an iterable of model.Sample objects.
+
+        :param filter_expr: Filter expression for query.
+        :param orderby: List of field name and direction pairs for order by.
+        :param limit: Maximum number of results to return.
+        """
+
+        raise NotImplementedError(_('Complex query for samples \
+            is not implemented.'))
+
+    @staticmethod
+    def query_alarms(filter_expr=None, orderby=None, limit=None):
+        """Return an iterable of model.Alarm objects.
+
+        :param filter_expr: Filter expression for query.
+        :param orderby: List of field name and direction pairs for order by.
+        :param limit: Maximum number of results to return.
+        """
+
+        raise NotImplementedError(_('Complex query for alarms \
+            is not implemented.'))
+
+    @staticmethod
+    def query_alarm_history(filter_expr=None, orderby=None, limit=None):
+        """Return an iterable of model.AlarmChange objects.
+
+        :param filter_expr: Filter expression for query.
+        :param orderby: List of field name and direction pairs for order by.
+        :param limit: Maximum number of results to return.
+        """
+
+        raise NotImplementedError(_('Complex query for alarms \
+            history is not implemented.'))

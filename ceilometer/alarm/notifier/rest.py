@@ -19,11 +19,12 @@
 
 import eventlet
 import requests
-import urlparse
+import six.moves.urllib.parse as urlparse
 
 from oslo.config import cfg
 
 from ceilometer.alarm import notifier
+from ceilometer.openstack.common.gettextutils import _  # noqa
 from ceilometer.openstack.common import jsonutils
 from ceilometer.openstack.common import log
 
@@ -32,16 +33,16 @@ LOG = log.getLogger(__name__)
 REST_NOTIFIER_OPTS = [
     cfg.StrOpt('rest_notifier_certificate_file',
                default='',
-               help='SSL Client certificate for REST notifier'
+               help='SSL Client certificate for REST notifier.'
                ),
     cfg.StrOpt('rest_notifier_certificate_key',
                default='',
-               help='SSL Client private key for REST notifier'
+               help='SSL Client private key for REST notifier.'
                ),
     cfg.BoolOpt('rest_notifier_ssl_verify',
                 default=True,
-                help='Verify the SSL Server certificate when \
-                calling alarm action'
+                help='Whether to verify the SSL Server certificate when '
+                'calling alarm action.'
                 ),
 
 ]
@@ -53,11 +54,16 @@ class RestAlarmNotifier(notifier.AlarmNotifier):
     """Rest alarm notifier."""
 
     @staticmethod
-    def notify(action, alarm_id, previous, current, reason):
-        LOG.info("Notifying alarm %s from %s to %s with action %s because %s",
-                 alarm_id, previous, current, action, reason)
+    def notify(action, alarm_id, previous, current, reason, reason_data):
+        LOG.info(_(
+            "Notifying alarm %(alarm_id)s from %(previous)s "
+            "to %(current)s with action %(action)s because "
+            "%(reason)s") % ({'alarm_id': alarm_id, 'previous': previous,
+                              'current': current, 'action': action,
+                              'reason': reason}))
         body = {'alarm_id': alarm_id, 'previous': previous,
-                'current': current, 'reason': reason}
+                'current': current, 'reason': reason,
+                'reason_data': reason_data}
         kwargs = {'data': jsonutils.dumps(body)}
 
         if action.scheme == 'https':

@@ -21,14 +21,14 @@ events.
 
 from oslo.config import cfg
 
-from ceilometer import sample
 from ceilometer import plugin
+from ceilometer import sample
 
 
 OPTS = [
     cfg.StrOpt('cinder_control_exchange',
                default='cinder',
-               help="Exchange name for Cinder notifications"),
+               help="Exchange name for Cinder notifications."),
 ]
 
 

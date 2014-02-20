@@ -25,7 +25,7 @@ Please note that ceilometer uses openstack-common extensively, which requires th
 the other parameters are set appropriately. For information we are listing the configuration
 elements that we use after the ceilometer specific elements.
 
-If you use sql alchemy, its specific paramaters will need to be set.
+If you use sql alchemy, its specific parameters will need to be set.
 
 
 ===============================  ====================================  ==============================================================
@@ -37,7 +37,7 @@ cinder_control_exchange          cinder                                Exchange 
 neutron_control_exchange         neutron                               Exchange name for Neutron notifications
 metering_secret                  change this or be hacked              Secret value for signing metering messages
 metering_topic                   metering                              the topic ceilometer uses for metering messages
-sample_source                    openstack                             The source name of emited samples
+sample_source                    openstack                             The source name of emitted samples
 control_exchange                 ceilometer                            AMQP exchange to connect to if using RabbitMQ or Qpid
 database_connection              mongodb://localhost:27017/ceilometer  Database connection string
 metering_api_port                8777                                  The port for the ceilometer API server
@@ -169,6 +169,22 @@ database_connection          hbase://$hbase-thrift-server:9090     Database conn
     the Ceilometer services that use the database to allow the changes to take
     affect, i.e. the collector and API services.
 
+Event Conversion
+================
+
+The following options in the [event] configuration section affect the extraction of Event data from notifications.
+
+==================================  ======================================  ==============================================================
+Parameter                           Default                                 Note
+==================================  ======================================  ==============================================================
+drop_unmatched_notifications        False                                   If set to True, then notifications with no matching event
+                                                                            definition will be dropped.
+                                                                            (Notifications will *only* be dropped if this is True)
+definitions_cfg_file                event_definitions.yaml                  Name of event definitions config file (yaml format)
+==================================  ======================================  ==============================================================
+
+
+
 General options
 ===============
 
@@ -253,3 +269,127 @@ dispatchers                  database                              The list of d
 A sample configuration file can be found in `ceilometer.conf.sample`_.
 
 .. _ceilometer.conf.sample: https://git.openstack.org/cgit/openstack/ceilometer/tree/etc/ceilometer/ceilometer.conf.sample
+
+Pipelines
+=========
+
+Pipelines describe chains of handlers, which can be transformers and/or
+publishers.
+
+The chain can start with a transformer, which is responsible for converting
+the data, coming from the pollsters or notification handlers (for further
+information see the :ref:`polling` section), to the required format, which
+can mean dropping some parts of the sample, doing aggregation, changing
+field or deriving samples for secondary meters, like in case of *cpu_util*,
+see the example below, in the configuration details. The pipeline can contain
+multiple transformers or none at all.
+
+The chains end with one or more publishers. This component makes it possible
+to persist the data into storage through the message bus or to send it to one
+or more external consumers. One chain can contain multiple publishers, see the
+:ref:`multi-publisher` section.
+
+Pipeline configuration
+----------------------
+
+Pipeline configuration by default, is stored in a separate configuration file,
+called pipeline.yaml, next to the ceilometer.conf file. The pipeline
+configuration file can be set in the *pipeline_cfg_file* parameter in
+ceilometer.conf. Multiple chains can be defined in one configuration file.
+
+The chain definition looks like the following::
+
+    ---
+    -
+    name: 'name of the pipeline'
+    interval: 'how often should the samples be injected into the pipeline'
+    meters:
+        - 'meter filter'
+    transformers: 'definition of transformers'
+    publishers:
+        - 'list of publishers'
+
+The *interval* should be defined in seconds.
+
+There are several ways to define the list of meters for a pipeline. The list
+of valid meters can be found in the :ref:`measurements` section. There is
+a possibility to define all the meters, or just included or excluded meters,
+with which a pipeline should operate:
+
+* To include all meters, use the '*' wildcard symbol.
+* To define the list of meters, use either of the following:
+
+  * To define the list of included meters, use the 'meter_name' syntax
+  * To define the list of excluded meters, use the '!meter_name' syntax
+  * For meters, which identify a complex Sample field, use the wildcard
+    symbol to select all, e.g. for "instance:m1.tiny", use "instance:\*"
+
+The above definition methods can be used in the following combinations:
+
+* Only the wildcard symbol
+* The list of included meters
+* The list of excluded meters
+* Wildcard symbol with the list of excluded meters
+
+.. note::
+    At least one of the above variations should be included in the meters
+    section. Included and excluded meters cannot co-exist in the same
+    pipeline. Wildcard and included meters cannot co-exist in the same
+    pipeline definition section.
+
+The *transformers* section provides the possibility to add a list of
+transformer definitions. The names of the transformers should be the same
+as the names of the related extensions in setup.cfg.
+
+The definition of transformers can contain the following fields::
+
+    transformers:
+        - name: 'name of the transformer'
+          parameters:
+
+The *parameters* section can contain transformer specific fields, like source
+and target fields with different subfields in case of the rate_of_change,
+which depends on the implementation of the transformer. In case of the
+transformer, which creates the *cpu_util* meter, the definition looks like the
+following::
+
+    transformers:
+        - name: "rate_of_change"
+          parameters:
+              target:
+                  name: "cpu_util"
+                  unit: "%"
+                  type: "gauge"
+                  scale: "100.0 / (10**9 * (resource_metadata.cpu_number or 1))"
+
+The *rate_of_change* transformer generates the *cpu_util* meter from the
+sample values of the *cpu* counter, which represents cumulative CPU time in
+nanoseconds. The transformer definition above defines a scale factor (for
+nanoseconds, multiple CPUs, etc.), which is applied before the transformation
+derives a sequence of gauge samples with unit '%', from the original values
+of the *cpu* meter.
+
+The definition for the disk I/O rate, which is also generated by the
+*rate_of_change* transformer::
+
+    transformers:
+        - name: "rate_of_change"
+          parameters:
+              source:
+                  map_from:
+                      name: "disk\\.(read|write)\\.(bytes|requests)"
+                      unit: "(B|request)"
+              target:
+                  map_to:
+                      name: "disk.\\1.\\2.rate"
+                      unit: "\\1/s"
+                  type: "gauge"
+
+The *publishers* section contains the list of publishers, where the samples
+data should be sent after the possible transformations. The names of the
+publishers should be the same as the related names of the plugins in
+setup.cfg.
+
+The default configuration can be found in `pipeline.yaml`_.
+
+.. _pipeline.yaml: https://git.openstack.org/cgit/openstack/ceilometer/tree/etc/ceilometer/pipeline.yaml

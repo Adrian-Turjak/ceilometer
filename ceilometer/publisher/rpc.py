@@ -18,18 +18,18 @@
 """Publish a sample using the preferred RPC mechanism.
 """
 
-import hashlib
-import hmac
+
 import itertools
 import operator
-import urlparse
+import six.moves.urllib.parse as urlparse
 
 from oslo.config import cfg
 
+from ceilometer.openstack.common.gettextutils import _  # noqa
 from ceilometer.openstack.common import log
 from ceilometer.openstack.common import rpc
 from ceilometer import publisher
-from ceilometer import utils
+from ceilometer.publisher import utils
 
 
 LOG = log.getLogger(__name__)
@@ -37,13 +37,7 @@ LOG = log.getLogger(__name__)
 METER_PUBLISH_OPTS = [
     cfg.StrOpt('metering_topic',
                default='metering',
-               help='the topic ceilometer uses for metering messages',
-               deprecated_group="DEFAULT",
-               ),
-    cfg.StrOpt('metering_secret',
-               secret=True,
-               default='change this or be hacked',
-               help='Secret value for signing metering messages',
+               help='The topic that ceilometer uses for metering messages.',
                deprecated_group="DEFAULT",
                ),
 ]
@@ -90,51 +84,6 @@ def override_backend_retry_config(value):
             cfg.CONF.set_override('rabbit_max_retries', value)
 
 
-def compute_signature(message, secret):
-    """Return the signature for a message dictionary.
-    """
-    digest_maker = hmac.new(secret, '', hashlib.sha256)
-    for name, value in utils.recursive_keypairs(message):
-        if name == 'message_signature':
-            # Skip any existing signature value, which would not have
-            # been part of the original message.
-            continue
-        digest_maker.update(name)
-        digest_maker.update(unicode(value).encode('utf-8'))
-    return digest_maker.hexdigest()
-
-
-def verify_signature(message, secret):
-    """Check the signature in the message against the value computed
-    from the rest of the contents.
-    """
-    old_sig = message.get('message_signature')
-    new_sig = compute_signature(message, secret)
-    return new_sig == old_sig
-
-
-def meter_message_from_counter(sample, secret):
-    """Make a metering message ready to be published or stored.
-
-    Returns a dictionary containing a metering message
-    for a notification message and a Sample instance.
-    """
-    msg = {'source': sample.source,
-           'counter_name': sample.name,
-           'counter_type': sample.type,
-           'counter_unit': sample.unit,
-           'counter_volume': sample.volume,
-           'user_id': sample.user_id,
-           'project_id': sample.project_id,
-           'resource_id': sample.resource_id,
-           'timestamp': sample.timestamp,
-           'resource_metadata': sample.resource_metadata,
-           'message_id': sample.id,
-           }
-    msg['message_signature'] = compute_signature(msg, secret)
-    return msg
-
-
 class RPCPublisher(publisher.PublisherBase):
 
     def __init__(self, parsed_url):
@@ -147,21 +96,21 @@ class RPCPublisher(publisher.PublisherBase):
 
         self.target = options.get('target', ['record_metering_data'])[0]
 
-        self.policy = options.get('policy', ['wait'])[-1]
+        self.policy = options.get('policy', ['default'])[-1]
         self.max_queue_length = int(options.get(
             'max_queue_length', [1024])[-1])
 
         self.local_queue = []
 
         if self.policy in ['queue', 'drop']:
-            LOG.info('Publishing policy set to %s, \
-                     override backend retry config to 1' % self.policy)
+            LOG.info(_('Publishing policy set to %s, \
+                     override backend retry config to 1') % self.policy)
             override_backend_retry_config(1)
 
         elif self.policy == 'default':
-            LOG.info('Publishing policy set to %s' % self.policy)
+            LOG.info(_('Publishing policy set to %s') % self.policy)
         else:
-            LOG.warn('Publishing policy is unknown (%s) force to default'
+            LOG.warn(_('Publishing policy is unknown (%s) force to default')
                      % self.policy)
             self.policy = 'default'
 
@@ -174,9 +123,9 @@ class RPCPublisher(publisher.PublisherBase):
         """
 
         meters = [
-            meter_message_from_counter(
+            utils.meter_message_from_counter(
                 sample,
-                cfg.CONF.publisher_rpc.metering_secret)
+                cfg.CONF.publisher.metering_secret)
             for sample in samples
         ]
 
@@ -186,8 +135,8 @@ class RPCPublisher(publisher.PublisherBase):
             'version': '1.0',
             'args': {'data': meters},
         }
-        LOG.audit('Publishing %d samples on %s',
-                  len(msg['args']['data']), topic)
+        LOG.audit(_('Publishing %(m)d samples on %(t)s') % (
+                  {'m': len(msg['args']['data']), 't': topic}))
         self.local_queue.append((context, topic, msg))
 
         if self.per_meter_topic:
@@ -200,8 +149,8 @@ class RPCPublisher(publisher.PublisherBase):
                     'args': {'data': list(meter_list)},
                 }
                 topic_name = topic + '.' + meter_name
-                LOG.audit('Publishing %d samples on %s',
-                          len(msg['args']['data']), topic_name)
+                LOG.audit(_('Publishing %(m)d samples on %(n)s') % (
+                          {'m': len(msg['args']['data']), 'n': topic_name}))
                 self.local_queue.append((context, topic_name, msg))
 
         self.flush()
@@ -225,8 +174,8 @@ class RPCPublisher(publisher.PublisherBase):
         if queue_length > self.max_queue_length > 0:
             count = queue_length - self.max_queue_length
             self.local_queue = self.local_queue[count:]
-            LOG.warn("Publisher max local_queue length is exceeded, "
-                     "dropping %d oldest samples", count)
+            LOG.warn(_("Publisher max local_queue length is exceeded, "
+                     "dropping %d oldest samples") % count)
 
     @staticmethod
     def _process_queue(queue, policy):
@@ -249,13 +198,13 @@ class RPCPublisher(publisher.PublisherBase):
             try:
                 rpc.cast(context, topic, msg)
             except (SystemExit, rpc.common.RPCException):
-                samples = sum([len(m['args']['data']) for _, _, m in queue])
+                samples = sum([len(m['args']['data']) for n, n, m in queue])
                 if policy == 'queue':
-                    LOG.warn("Failed to publish %s samples, queue them",
+                    LOG.warn(_("Failed to publish %d samples, queue them"),
                              samples)
                     return queue
                 elif policy == 'drop':
-                    LOG.warn("Failed to publish %d samples, dropping them",
+                    LOG.warn(_("Failed to publish %d samples, dropping them"),
                              samples)
                     return []
                 # default, occur only if rabbit_max_retries > 0

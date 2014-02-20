@@ -20,8 +20,8 @@
 
 from oslo.config import cfg
 
-from ceilometer import sample
 from ceilometer.openstack.common import timeutils
+from ceilometer import sample
 
 
 INSTANCE_PROPERTIES = [
@@ -38,10 +38,10 @@ INSTANCE_PROPERTIES = [
 OPTS = [
     cfg.ListOpt('reserved_metadata_namespace',
                 default=['metering.'],
-                help='list of metadata prefixes reserved for metering use'),
+                help='List of metadata prefixes reserved for metering use.'),
     cfg.IntOpt('reserved_metadata_length',
                default=256,
-               help='limit on length of reserved metadata values'),
+               help='Limit on length of reserved metadata values.'),
 ]
 
 cfg.CONF.register_opts(OPTS)

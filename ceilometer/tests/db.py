@@ -23,27 +23,47 @@ import os
 import uuid
 import warnings
 
-from oslo.config import cfg
+import six
 
+from ceilometer.openstack.common.fixture import config
+import ceilometer.openstack.common.fixture.mockpatch as oslo_mock
 from ceilometer import storage
 from ceilometer.tests import base as test_base
 
 
-class TestBase(test_base.TestCase):
+class TestBase(test_base.BaseTestCase):
     def setUp(self):
         super(TestBase, self).setUp()
-        cfg.CONF.set_override('connection', str(self.database_connection),
-                              group='database')
+
+        if self.database_connection is None:
+            self.skipTest("No connection URL set")
+
+        self.CONF = self.useFixture(config.Config()).conf
+        self.CONF.set_override('connection', str(self.database_connection),
+                               group='database')
 
         with warnings.catch_warnings():
             warnings.filterwarnings(
                 action='ignore',
                 message='.*you must provide a username and password.*')
             try:
-                self.conn = storage.get_connection(cfg.CONF)
+                self.conn = storage.get_connection(self.CONF)
             except storage.StorageBadVersion as e:
                 self.skipTest(str(e))
         self.conn.upgrade()
+
+        self.useFixture(oslo_mock.Patch('ceilometer.storage.get_connection',
+                                        return_value=self.conn))
+
+        self.CONF([], project='ceilometer')
+
+        # Set a default location for the pipeline config file so the
+        # tests work even if ceilometer is not installed globally on
+        # the system.
+        self.CONF.set_override(
+            'pipeline_cfg_file',
+            self.path_get('etc/ceilometer/pipeline.yaml')
+        )
 
     def tearDown(self):
         self.conn.clear()
@@ -78,12 +98,25 @@ class DB2FakeConnectionUrl(MongoDBFakeConnectionUrl):
             self.url = self.url.replace('mongodb:', 'db2:', 1)
 
 
+class HBaseFakeConnectionUrl(object):
+    def __init__(self):
+        self.url = os.environ.get('CEILOMETER_TEST_HBASE_URL')
+        if not self.url:
+            self.url = 'hbase://__test__'
+
+    def __str__(self):
+        s = '%s?table_prefix=%s' % (
+            self.url,
+            uuid.uuid4().hex)
+        return s
+
+
+@six.add_metaclass(test_base.SkipNotImplementedMeta)
 class MixinTestsWithBackendScenarios(object):
-    __metaclass__ = test_base.SkipNotImplementedMeta
 
     scenarios = [
         ('sqlalchemy', dict(database_connection='sqlite://')),
         ('mongodb', dict(database_connection=MongoDBFakeConnectionUrl())),
-        ('hbase', dict(database_connection='hbase://__test__')),
+        ('hbase', dict(database_connection=HBaseFakeConnectionUrl())),
         ('db2', dict(database_connection=DB2FakeConnectionUrl())),
     ]

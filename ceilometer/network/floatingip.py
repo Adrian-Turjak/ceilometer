@@ -19,12 +19,12 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+from ceilometer.central import plugin
+from ceilometer import nova_client
+from ceilometer.openstack.common.gettextutils import _  # noqa
 from ceilometer.openstack.common import log
 from ceilometer.openstack.common import timeutils
-
-from ceilometer.central import plugin
 from ceilometer import sample
-from ceilometer import nova_client
 
 
 class FloatingIPPollster(plugin.CentralPollster):
@@ -40,9 +40,9 @@ class FloatingIPPollster(plugin.CentralPollster):
             cache['floating_ips'] = list(self._get_floating_ips())
         return iter(cache['floating_ips'])
 
-    def get_samples(self, manager, cache):
+    def get_samples(self, manager, cache, resources=[]):
         for ip in self._iter_floating_ips(cache):
-            self.LOG.info("FLOATING IP USAGE: %s" % ip.ip)
+            self.LOG.info(_("FLOATING IP USAGE: %s") % ip.ip)
             # FIXME (flwang) Now Nova API /os-floating-ips can't provide those
             # attributes were used by Ceilometer, such as project id, host.
             # In this fix, those attributes usage will be removed temporarily.

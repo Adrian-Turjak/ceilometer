@@ -17,6 +17,9 @@
 # under the License.
 """Model classes for use in the storage API.
 """
+import inspect
+
+from ceilometer.openstack.common import timeutils
 
 
 class Model(object):
@@ -42,6 +45,11 @@ class Model(object):
     def __eq__(self, other):
         return self.as_dict() == other.as_dict()
 
+    @classmethod
+    def get_field_names(cls):
+        fields = inspect.getargspec(cls.__init__)[0]
+        return set(fields) - set(["self"])
+
 
 class Event(Model):
     """A raw event from the source system. Events have Traits.
@@ -52,18 +60,18 @@ class Event(Model):
     DUPLICATE = 1
     UNKNOWN_PROBLEM = 2
 
-    def __init__(self, message_id, event_name, generated, traits):
+    def __init__(self, message_id, event_type, generated, traits):
         """Create a new event.
 
         :param message_id:  Unique ID for the message this event
                             stemmed from. This is different than
                             the Event ID, which comes from the
                             underlying storage system.
-        :param event_name:  Name of the event.
-        :param generated:   UTC time for when the event occured.
+        :param event_type:  The type of the event.
+        :param generated:   UTC time for when the event occurred.
         :param traits:      list of Traits on this Event.
         """
-        Model.__init__(self, message_id=message_id, event_name=event_name,
+        Model.__init__(self, message_id=message_id, event_type=event_type,
                        generated=generated, traits=traits)
 
     def append_trait(self, trait_model):
@@ -74,7 +82,7 @@ class Event(Model):
         if self.traits:
             trait_list = [str(trait) for trait in self.traits]
         return "<Event: %s, %s, %s, %s>" % \
-            (self.message_id, self.event_name, self.generated,
+            (self.message_id, self.event_type, self.generated,
              " ".join(trait_list))
 
 
@@ -83,16 +91,52 @@ class Trait(Model):
     record of basic data types (int, date, float, etc).
     """
 
+    NONE_TYPE = 0
     TEXT_TYPE = 1
     INT_TYPE = 2
     FLOAT_TYPE = 3
     DATETIME_TYPE = 4
 
+    type_names = {
+        NONE_TYPE: "none",
+        TEXT_TYPE: "string",
+        INT_TYPE: "integer",
+        FLOAT_TYPE: "float",
+        DATETIME_TYPE: "datetime"
+    }
+
     def __init__(self, name, dtype, value):
+        if not dtype:
+            dtype = Trait.NONE_TYPE
         Model.__init__(self, name=name, dtype=dtype, value=value)
 
     def __repr__(self):
         return "<Trait: %s %d %s>" % (self.name, self.dtype, self.value)
+
+    def get_type_name(self):
+        return self.get_name_by_type(self.dtype)
+
+    @classmethod
+    def get_type_by_name(cls, type_name):
+        return getattr(cls, '%s_TYPE' % type_name.upper(), None)
+
+    @classmethod
+    def get_type_names(cls):
+        return cls.type_names.values()
+
+    @classmethod
+    def get_name_by_type(cls, type_id):
+        return cls.type_names.get(type_id, "none")
+
+    @classmethod
+    def convert_value(cls, trait_type, value):
+        if trait_type is cls.INT_TYPE:
+            return int(value)
+        if trait_type is cls.FLOAT_TYPE:
+            return float(value)
+        if trait_type is cls.DATETIME_TYPE:
+            return timeutils.normalize_time(timeutils.parse_isotime(value))
+        return str(value)
 
 
 class Resource(Model):
@@ -133,7 +177,7 @@ class Meter(Model):
         """Create a new meter.
 
         :param name: name of the meter
-        :param type: type of the meter (guage, counter)
+        :param type: type of the meter (gauge, delta, cumulative)
         :param unit: unit of the meter
         :param resource_id: UUID of the resource
         :param project_id: UUID of project owning the resource

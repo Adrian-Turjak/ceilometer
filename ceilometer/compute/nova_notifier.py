@@ -19,8 +19,8 @@
 import sys
 
 from nova import notifications
-from nova.openstack.common.notifier import api as notifier_api
 from nova.openstack.common import log as logging
+from nova.openstack.common.notifier import api as notifier_api
 
 # HACK(dhellmann): Insert the nova version of openstack.common into
 # sys.modules as though it was the copy from ceilometer, so that when
@@ -30,13 +30,14 @@ import ceilometer  # noqa
 for name in ['openstack', 'openstack.common', 'openstack.common.log']:
     sys.modules['ceilometer.' + name] = sys.modules['nova.' + name]
 
+from nova.compute import flavors
 from nova import conductor
 from nova import utils
 
 from stevedore import extension
 
 from ceilometer.compute.virt import inspector
-from ceilometer.openstack.common.gettextutils import _
+from ceilometer.openstack.common.gettextutils import _  # noqa
 
 
 # This module runs inside the nova compute
@@ -56,15 +57,12 @@ class DeletedInstanceStatsGatherer(object):
         self.mgr = extensions
         self.inspector = inspector.get_hypervisor_inspector()
 
-    def _get_samples_from_plugin(self, ext, cache, instance, *args, **kwds):
-        """Used with the extenaion manager map() method."""
-        return ext.obj.get_samples(self, cache, instance)
-
     def __call__(self, instance):
         cache = {}
-        samples = self.mgr.map(self._get_samples_from_plugin,
-                               cache=cache,
-                               instance=instance)
+        samples = self.mgr.map_method('get_samples',
+                                      self,
+                                      cache,
+                                      instance)
         # samples is a list of lists, so flatten it before returning
         # the results
         results = []
@@ -98,7 +96,7 @@ class Instance(object):
 
     The pollsters all expect an instance that looks like what the
     novaclient gives them, but the conductor API gives us a
-    dictionary. This class makes an object from the dictonary so we
+    dictionary. This class makes an object from the dictionary so we
     can pass it to the pollsters.
     """
     def __init__(self, context, info):
@@ -109,8 +107,10 @@ class Instance(object):
                 setattr(self, k, utils.metadata_to_dict(v))
             else:
                 setattr(self, k, v)
-        self.flavor_name = conductor_api.instance_type_get(
-            context, self.instance_type_id).get('name', 'UNKNOWN')
+
+        instance_type = flavors.extract_flavor(info)
+        self.flavor_name = instance_type.get('name', 'UNKNOWN')
+        self.instance_flavor_id = instance_type.get('flavorid', '')
         LOG.debug(_('INFO %r'), info)
 
     @property
@@ -121,6 +121,7 @@ class Instance(object):
     def flavor(self):
         return {
             'id': self.instance_type_id,
+            'flavor_id': self.instance_flavor_id,
             'name': self.flavor_name,
             'vcpus': self.vcpus,
             'ram': self.memory_mb,

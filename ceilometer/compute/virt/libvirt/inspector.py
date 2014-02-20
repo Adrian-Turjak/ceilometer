@@ -21,6 +21,7 @@ from lxml import etree
 from oslo.config import cfg
 
 from ceilometer.compute.virt import inspector as virt_inspector
+from ceilometer.openstack.common.gettextutils import _  # noqa
 from ceilometer.openstack.common import log as logging
 
 libvirt = None
@@ -31,11 +32,11 @@ libvirt_opts = [
     cfg.StrOpt('libvirt_type',
                default='kvm',
                help='Libvirt domain type (valid options are: '
-                    'kvm, lxc, qemu, uml, xen)'),
+                    'kvm, lxc, qemu, uml, xen).'),
     cfg.StrOpt('libvirt_uri',
                default='',
                help='Override the default libvirt URI '
-                    '(which is dependent on libvirt_type)'),
+                    '(which is dependent on libvirt_type).'),
 ]
 
 CONF = cfg.CONF
@@ -60,7 +61,7 @@ class LibvirtInspector(virt_inspector.Inspector):
             if libvirt is None:
                 libvirt = __import__('libvirt')
 
-            LOG.debug('Connecting to libvirt: %s', self.uri)
+            LOG.debug(_('Connecting to libvirt: %s'), self.uri)
             self.connection = libvirt.openReadOnly(self.uri)
 
         return self.connection
@@ -73,7 +74,7 @@ class LibvirtInspector(virt_inspector.Inspector):
             if (e.get_error_code() == libvirt.VIR_ERR_SYSTEM_ERROR and
                 e.get_error_domain() in (libvirt.VIR_FROM_REMOTE,
                                          libvirt.VIR_FROM_RPC)):
-                LOG.debug('Connection to libvirt broke')
+                LOG.debug(_('Connection to libvirt broke'))
                 return False
             raise
 
@@ -99,18 +100,24 @@ class LibvirtInspector(virt_inspector.Inspector):
                     if domain_id != 0:
                         domain = self._get_connection().lookupByID(domain_id)
                         yield virt_inspector.Instance(name=domain.name(),
-                                                      uuid=domain.UUIDString())
+                                                      UUID=domain.UUIDString())
                 except libvirt.libvirtError:
                     # Instance was deleted while listing... ignore it
                     pass
 
     def inspect_cpus(self, instance_name):
         domain = self._lookup_by_name(instance_name)
-        (_, _, _, num_cpu, cpu_time) = domain.info()
+        (__, __, __, num_cpu, cpu_time) = domain.info()
         return virt_inspector.CPUStats(number=num_cpu, time=cpu_time)
 
     def inspect_vnics(self, instance_name):
         domain = self._lookup_by_name(instance_name)
+        (state, __, __, __, __) = domain.info()
+        if state == libvirt.VIR_DOMAIN_SHUTOFF:
+            LOG.warn(_('Failed to inspect vnics of %(instance_name)s, '
+                       'domain is in state of SHUTOFF'),
+                     {'instance_name': instance_name})
+            return
         tree = etree.fromstring(domain.XMLDesc(0))
         for iface in tree.findall('devices/interface'):
             target = iface.find('target')
@@ -131,8 +138,8 @@ class LibvirtInspector(virt_inspector.Inspector):
                           for p in iface.findall('filterref/parameter'))
             interface = virt_inspector.Interface(name=name, mac=mac_address,
                                                  fref=fref, parameters=params)
-            rx_bytes, rx_packets, _, _, \
-                tx_bytes, tx_packets, _, _ = domain.interfaceStats(name)
+            rx_bytes, rx_packets, __, __, \
+                tx_bytes, tx_packets, __, __ = domain.interfaceStats(name)
             stats = virt_inspector.InterfaceStats(rx_bytes=rx_bytes,
                                                   rx_packets=rx_packets,
                                                   tx_bytes=tx_bytes,
@@ -141,6 +148,12 @@ class LibvirtInspector(virt_inspector.Inspector):
 
     def inspect_disks(self, instance_name):
         domain = self._lookup_by_name(instance_name)
+        (state, __, __, __, __) = domain.info()
+        if state == libvirt.VIR_DOMAIN_SHUTOFF:
+            LOG.warn(_('Failed to inspect disks of %(instance_name)s, '
+                       'domain is in state of SHUTOFF'),
+                     {'instance_name': instance_name})
+            return
         tree = etree.fromstring(domain.XMLDesc(0))
         for device in filter(
                 bool,

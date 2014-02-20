@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2010 United States Government as represented by the
 # Administrator of the National Aeronautics and Space Administration.
 # Copyright 2011 Justin Santa Barbara
@@ -25,6 +23,7 @@ import datetime
 import decimal
 
 from ceilometer.openstack.common import timeutils
+from ceilometer.openstack.common import units
 
 
 def recursive_keypairs(d, separator=':'):
@@ -32,7 +31,7 @@ def recursive_keypairs(d, separator=':'):
     """
     for name, value in sorted(d.iteritems()):
         if isinstance(value, dict):
-            for subname, subvalue in recursive_keypairs(value):
+            for subname, subvalue in recursive_keypairs(value, separator):
                 yield ('%s%s%s' % (name, separator, subname), subvalue)
         elif isinstance(value, (tuple, list)):
             # When doing a pair of JSON encode/decode operations to the tuple,
@@ -59,6 +58,9 @@ def dt_to_decimal(utc):
     Some databases don't store microseconds in datetime
     so we always store as Decimal unixtime.
     """
+    if utc is None:
+        return None
+
     decimal.getcontext().prec = 30
     return decimal.Decimal(str(calendar.timegm(utc.utctimetuple()))) + \
         (decimal.Decimal(str(utc.microsecond)) /
@@ -70,8 +72,9 @@ def decimal_to_dt(dec):
     """
     if dec is None:
         return None
+
     integer = int(dec)
-    micro = (dec - decimal.Decimal(integer)) * decimal.Decimal(1000000)
+    micro = (dec - decimal.Decimal(integer)) * decimal.Decimal(units.M)
     daittyme = datetime.datetime.utcfromtimestamp(integer)
     return daittyme.replace(microsecond=int(round(micro)))
 
@@ -90,3 +93,42 @@ def stringify_timestamps(data):
     isa_timestamp = lambda v: isinstance(v, datetime.datetime)
     return dict((k, v.isoformat() if isa_timestamp(v) else v)
                 for (k, v) in data.iteritems())
+
+
+def dict_to_keyval(value, key_base=None):
+    """Expand a given dict to its corresponding key-value pairs.
+
+    Generated keys are fully qualified, delimited using dot notation.
+    ie. key = 'key.child_key.grandchild_key[0]'
+    """
+    val_iter, key_func = None, None
+    if isinstance(value, dict):
+        val_iter = value.iteritems()
+        key_func = lambda k: key_base + '.' + k if key_base else k
+    elif isinstance(value, (tuple, list)):
+        val_iter = enumerate(value)
+        key_func = lambda k: key_base + '[%d]' % k
+
+    if val_iter:
+        for k, v in val_iter:
+            key_gen = key_func(k)
+            if isinstance(v, dict) or isinstance(v, (tuple, list)):
+                for key_gen, v in dict_to_keyval(v, key_gen):
+                    yield key_gen, v
+            else:
+                yield key_gen, v
+
+
+def lowercase_keys(mapping):
+    """Converts the values of the keys in mapping to lowercase."""
+    items = mapping.items()
+    for key, value in items:
+        del mapping[key]
+        mapping[key.lower()] = value
+
+
+def lowercase_values(mapping):
+    """Converts the values in the mapping dict to lowercase."""
+    items = mapping.items()
+    for key, value in items:
+        mapping[key] = value.lower()

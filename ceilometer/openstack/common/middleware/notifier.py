@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright (c) 2013 eNovance
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -13,6 +11,7 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+
 """
 Send notifications on request
 
@@ -21,10 +20,11 @@ import os.path
 import sys
 import traceback as tb
 
+import six
 import webob.dec
 
 from ceilometer.openstack.common import context
-from ceilometer.openstack.common.gettextutils import _  # noqa
+from ceilometer.openstack.common.gettextutils import _
 from ceilometer.openstack.common import log as logging
 from ceilometer.openstack.common.middleware import base
 from ceilometer.openstack.common.notifier import api
@@ -57,6 +57,8 @@ class RequestNotifier(base.Middleware):
 
     def __init__(self, app, **conf):
         self.service_name = conf.get('service_name', None)
+        self.ignore_req_list = [x.upper().strip() for x in
+                                conf.get('ignore_req_list', '').split(',')]
         super(RequestNotifier, self).__init__(app)
 
     @staticmethod
@@ -65,7 +67,7 @@ class RequestNotifier(base.Middleware):
         include them.
 
         """
-        return dict((k, v) for k, v in environ.iteritems()
+        return dict((k, v) for k, v in six.iteritems(environ)
                     if k.isupper())
 
     @log_and_ignore_error
@@ -109,13 +111,16 @@ class RequestNotifier(base.Middleware):
 
     @webob.dec.wsgify
     def __call__(self, req):
-        self.process_request(req)
-        try:
-            response = req.get_response(self.application)
-        except Exception:
-            type, value, traceback = sys.exc_info()
-            self.process_response(req, None, value, traceback)
-            raise
+        if req.method in self.ignore_req_list:
+            return req.get_response(self.application)
         else:
-            self.process_response(req, response)
-        return response
+            self.process_request(req)
+            try:
+                response = req.get_response(self.application)
+            except Exception:
+                exc_type, value, traceback = sys.exc_info()
+                self.process_response(req, None, value, traceback)
+                raise
+            else:
+                self.process_response(req, response)
+            return response

@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 #    Copyright 2011 Cloudscaling Group, Inc
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -13,6 +11,7 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+
 """
 The MatchMaker classes should except a Topic or Fanout exchange key and
 return keys for direct exchanges, per (approximate) AMQP parlance.
@@ -23,7 +22,7 @@ import contextlib
 import eventlet
 from oslo.config import cfg
 
-from ceilometer.openstack.common.gettextutils import _  # noqa
+from ceilometer.openstack.common.gettextutils import _
 from ceilometer.openstack.common import log as logging
 
 
@@ -92,7 +91,7 @@ class MatchMakerBase(object):
         """Acknowledge that a key.host is alive.
 
         Used internally for updating heartbeats, but may also be used
-        publically to acknowledge a system is alive (i.e. rpc message
+        publicly to acknowledge a system is alive (i.e. rpc message
         successfully sent to host)
         """
         pass
@@ -174,7 +173,7 @@ class HeartbeatMatchMakerBase(MatchMakerBase):
         """Acknowledge that a host.topic is alive.
 
         Used internally for updating heartbeats, but may also be used
-        publically to acknowledge a system is alive (i.e. rpc message
+        publicly to acknowledge a system is alive (i.e. rpc message
         successfully sent to host)
         """
         raise NotImplementedError("Must implement ack_alive")

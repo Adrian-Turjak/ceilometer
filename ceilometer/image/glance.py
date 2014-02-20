@@ -19,14 +19,14 @@
 """
 
 from __future__ import absolute_import
-
 import itertools
+
 import glanceclient
 from oslo.config import cfg
 
-from ceilometer import sample
 from ceilometer.openstack.common import timeutils
 from ceilometer import plugin
+from ceilometer import sample
 
 
 class _Base(plugin.PollsterBase):
@@ -38,8 +38,11 @@ class _Base(plugin.PollsterBase):
             endpoint_type=cfg.CONF.service_credentials.os_endpoint_type)
 
         # hard-code v1 glance API version selection while v2 API matures
+        service_credentials = cfg.CONF.service_credentials
         return glanceclient.Client('1', endpoint,
-                                   token=ksclient.auth_token)
+                                   token=ksclient.auth_token,
+                                   cacert=service_credentials.os_cacert,
+                                   insecure=service_credentials.insecure)
 
     def _get_images(self, ksclient):
         client = self.get_glance_client(ksclient)
@@ -101,7 +104,7 @@ class _Base(plugin.PollsterBase):
 
 class ImagePollster(_Base):
 
-    def get_samples(self, manager, cache):
+    def get_samples(self, manager, cache, resources=[]):
         for image in self._iter_images(manager.keystone, cache):
             yield sample.Sample(
                 name='image',
@@ -118,7 +121,7 @@ class ImagePollster(_Base):
 
 class ImageSizePollster(_Base):
 
-    def get_samples(self, manager, cache):
+    def get_samples(self, manager, cache, resources=[]):
         for image in self._iter_images(manager.keystone, cache):
             yield sample.Sample(
                 name='image.size',

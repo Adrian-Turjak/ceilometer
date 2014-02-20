@@ -18,6 +18,8 @@
 
 import logging
 import os
+from wsgiref import simple_server
+
 from oslo.config import cfg
 import pecan
 
@@ -25,10 +27,9 @@ from ceilometer.api import acl
 from ceilometer.api import config as api_config
 from ceilometer.api import hooks
 from ceilometer.api import middleware
+from ceilometer.openstack.common import log
 from ceilometer import service
 from ceilometer import storage
-from ceilometer.openstack.common import log
-from wsgiref import simple_server
 
 LOG = log.getLogger(__name__)
 
@@ -52,12 +53,10 @@ def get_pecan_config():
 
 
 def setup_app(pecan_config=None, extra_hooks=None):
-    storage_engine = storage.get_engine(cfg.CONF)
     # FIXME: Replace DBHook with a hooks.TransactionHook
     app_hooks = [hooks.ConfigHook(),
                  hooks.DBHook(
-                     storage_engine,
-                     storage_engine.get_connection(cfg.CONF),
+                     storage.get_connection(cfg.CONF),
                  ),
                  hooks.PipelineHook(),
                  hooks.TranslationHook()]
@@ -80,7 +79,7 @@ def setup_app(pecan_config=None, extra_hooks=None):
         guess_content_type_from_ext=False
     )
 
-    if pecan_config.app.enable_acl:
+    if getattr(pecan_config.app, 'enable_acl', True):
         return acl.install(app, cfg.CONF)
 
     return app
@@ -89,6 +88,7 @@ def setup_app(pecan_config=None, extra_hooks=None):
 class VersionSelectorApplication(object):
     def __init__(self):
         pc = get_pecan_config()
+        pc.app.debug = CONF.debug
         pc.app.enable_acl = (CONF.auth_strategy == 'keystone')
         if cfg.CONF.enable_v1_api:
             from ceilometer.api.v1 import app as v1app
@@ -116,14 +116,16 @@ def start():
     host, port = cfg.CONF.api.host, cfg.CONF.api.port
     srv = simple_server.make_server(host, port, root)
 
-    LOG.info('Starting server in PID %s' % os.getpid())
-    LOG.info("Configuration:")
+    LOG.info(_('Starting server in PID %s') % os.getpid())
+    LOG.info(_("Configuration:"))
     cfg.CONF.log_opt_values(LOG, logging.INFO)
 
     if host == '0.0.0.0':
-        LOG.info('serving on 0.0.0.0:%s, view at http://127.0.0.1:%s' %
-                 (port, port))
+        LOG.info(_(
+            'serving on 0.0.0.0:%(sport)s, view at http://127.0.0.1:%(vport)s')
+            % ({'sport': port, 'vport': port}))
     else:
-        LOG.info("serving on http://%s:%s" % (host, port))
+        LOG.info(_("serving on http://%(host)s:%(port)s") % (
+                 {'host': host, 'port': port}))
 
     srv.serve_forever()
