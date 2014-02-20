@@ -23,6 +23,8 @@
 from ceilometer.compute import notifications
 from ceilometer import sample
 
+from ceilometer.vm_states import states
+
 
 class InstanceScheduled(notifications.ComputeNotificationBase):
     event_types = ['scheduler.run_instance.scheduled']
@@ -54,6 +56,23 @@ class Instance(ComputeInstanceNotificationBase):
             type=sample.TYPE_GAUGE,
             unit='instance',
             volume=1,
+            user_id=message['payload']['user_id'],
+            project_id=message['payload']['tenant_id'],
+            resource_id=message['payload']['instance_id'],
+            message=message)
+
+
+class InstanceState(ComputeInstanceNotificationBase):
+
+    def process_notification(self, message):
+
+        state = message['payload']['state']
+
+        yield sample.Sample.from_notification(
+            name='state',
+            type=sample.TYPE_GAUGE,
+            unit='state',
+            volume=states[state],
             user_id=message['payload']['user_id'],
             project_id=message['payload']['tenant_id'],
             resource_id=message['payload']['instance_id'],

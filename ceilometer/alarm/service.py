@@ -47,7 +47,7 @@ OPTS = [
                    'threshold_evaluation_interval', group='alarm')]),
     cfg.StrOpt('evaluation_service',
                default='ceilometer.alarm.service.SingletonAlarmService',
-               help='Class to launch as alarm evaluation service'),
+               help='Class to launch as alarm evaluation service.'),
 ]
 
 cfg.CONF.register_opts(OPTS, group='alarm')
@@ -84,7 +84,7 @@ class AlarmService(object):
                 os_tenant_name=auth_config.os_tenant_name,
                 os_password=auth_config.os_password,
                 os_username=auth_config.os_username,
-                cacert=auth_config.os_cacert,
+                os_cacert=auth_config.os_cacert,
                 os_endpoint_type=auth_config.os_endpoint_type,
             )
             self.api_client = ceiloclient.get_client(2, **creds)
@@ -225,7 +225,8 @@ class AlarmNotifierService(rpc_service.Service):
             'ceilometer.alarm.' + cfg.CONF.alarm.notifier_rpc_topic,
         )
 
-    def _handle_action(self, action, alarm_id, previous, current, reason):
+    def _handle_action(self, action, alarm_id, previous,
+                       current, reason, reason_data):
         try:
             action = network_utils.urlsplit(action)
         except Exception:
@@ -247,7 +248,8 @@ class AlarmNotifierService(rpc_service.Service):
         try:
             LOG.debug(_("Notifying alarm %(id)s with action %(act)s") % (
                       {'id': alarm_id, 'act': action}))
-            notifier.notify(action, alarm_id, previous, current, reason)
+            notifier.notify(action, alarm_id, previous,
+                            current, reason, reason_data)
         except Exception:
             LOG.exception(_("Unable to notify alarm %s"), alarm_id)
             return
@@ -262,6 +264,7 @@ class AlarmNotifierService(rpc_service.Service):
         - previous, the previous state of the alarm
         - current, the new state the alarm has transitioned to
         - reason, the reason the alarm changed its state
+        - reason_data, a dict representation of the reason
 
         :param context: Request context.
         :param data: A dict as described above.
@@ -276,7 +279,8 @@ class AlarmNotifierService(rpc_service.Service):
                                 data.get('alarm_id'),
                                 data.get('previous'),
                                 data.get('current'),
-                                data.get('reason'))
+                                data.get('reason'),
+                                data.get('reason_data'))
 
 
 def alarm_notifier():

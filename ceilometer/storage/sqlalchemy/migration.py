@@ -32,7 +32,9 @@ def db_sync(engine):
     db_version(engine)  # This is needed to create a version stamp in empty DB
     repository = _find_migrate_repo()
     versioning_api.upgrade(engine, repository)
-    alembic.command.upgrade(_alembic_config(), "head")
+    config = _alembic_config()
+    config._engine = engine
+    alembic.command.upgrade(config, "head")
 
 
 def _alembic_config():
@@ -50,7 +52,7 @@ def db_version(engine):
         meta = sqlalchemy.MetaData()
         meta.reflect(bind=engine)
         tables = meta.tables
-        if len(tables) == 0:
+        if not tables:
             db_version_control(engine, 0)
             return versioning_api.db_version(engine, repository)
 
