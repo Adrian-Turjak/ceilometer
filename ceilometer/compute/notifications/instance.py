@@ -136,13 +136,6 @@ class InstanceFlavorID(ComputeInstanceNotificationBase):
 
     def process_notification(self, message):
         
-        from random import randint
-        x = randint(1,9999999999)
-        filename = '/vagrant/file' + str(x) + '.txt'
-        f = open(filename,'w')
-        f.write(str(message))
-        f.close()
-
         yield sample.Sample.from_notification(
             name='flavor',
             type=sample.TYPE_GAUGE,
