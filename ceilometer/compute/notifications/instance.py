@@ -132,8 +132,16 @@ class InstanceFlavorID(ComputeInstanceNotificationBase):
     event_types = ['compute.instance.create.end',
                    'compute.instance.delete.end',
                    'compute.instance.resize.*']
+    
 
     def process_notification(self, message):
+        
+        from random import randint
+        x = randint(1,9999999999)
+        filename = '/vagrant/file' + str(x) + '.txt'
+        f = open(filename,'w')
+        f.write(str(message))
+        f.close()
 
         yield sample.Sample.from_notification(
             name='flavor',
