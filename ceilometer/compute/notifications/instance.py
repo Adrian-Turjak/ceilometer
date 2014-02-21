@@ -139,7 +139,7 @@ class InstanceFlavorID(ComputeInstanceNotificationBase):
             name='flavor',
             type=sample.TYPE_GAUGE,
             unit='flavor.id',
-            volume=message['payload']['instance_type_id'],
+            volume=message['payload']['instance_flavor_id'],
             user_id=message['payload']['user_id'],
             project_id=message['payload']['tenant_id'],
             resource_id=message['payload']['instance_id'],
