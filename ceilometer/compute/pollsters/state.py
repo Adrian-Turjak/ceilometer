@@ -20,9 +20,8 @@ from ceilometer.compute import plugin
 from ceilometer.compute.pollsters import util
 from ceilometer.openstack.common import log
 from ceilometer import sample
+from ceilometer.compute import vm_states
 LOG = log.getLogger(__name__)
-
-from ceilometer import vm_states
 
 
 class StatePollster(plugin.ComputePollster):

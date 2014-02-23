@@ -23,6 +23,7 @@ import datetime
 import decimal
 
 from ceilometer.openstack.common import timeutils
+from ceilometer.openstack.common import units
 
 
 def recursive_keypairs(d, separator=':'):
@@ -30,7 +31,7 @@ def recursive_keypairs(d, separator=':'):
     """
     for name, value in sorted(d.iteritems()):
         if isinstance(value, dict):
-            for subname, subvalue in recursive_keypairs(value):
+            for subname, subvalue in recursive_keypairs(value, separator):
                 yield ('%s%s%s' % (name, separator, subname), subvalue)
         elif isinstance(value, (tuple, list)):
             # When doing a pair of JSON encode/decode operations to the tuple,
@@ -73,7 +74,7 @@ def decimal_to_dt(dec):
         return None
 
     integer = int(dec)
-    micro = (dec - decimal.Decimal(integer)) * decimal.Decimal(1000000)
+    micro = (dec - decimal.Decimal(integer)) * decimal.Decimal(units.M)
     daittyme = datetime.datetime.utcfromtimestamp(integer)
     return daittyme.replace(microsecond=int(round(micro)))
 

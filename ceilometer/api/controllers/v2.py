@@ -317,7 +317,8 @@ def _verify_query_segregation(query, auth_project=None):
                 raise ProjectNotAuthorized(q.value)
 
 
-def _validate_query(query, db_func, internal_keys=[]):
+def _validate_query(query, db_func, internal_keys=[],
+                    is_timestamp_valid=True):
     _verify_query_segregation(query)
 
     valid_keys = inspect.getargspec(db_func)[0]
@@ -326,23 +327,28 @@ def _validate_query(query, db_func, internal_keys=[]):
     translation = {'user_id': 'user',
                    'project_id': 'project',
                    'resource_id': 'resource'}
-    has_timestamp = False
+
+    has_timestamp_query = _validate_timestamp_fields(query,
+                                                     'timestamp',
+                                                     ('lt', 'le', 'gt', 'ge'),
+                                                     is_timestamp_valid)
+    has_search_offset_query = _validate_timestamp_fields(query,
+                                                         'search_offset',
+                                                         ('eq'),
+                                                         is_timestamp_valid)
+
+    if has_search_offset_query and not has_timestamp_query:
+        raise wsme.exc.InvalidInput('field', 'search_offset',
+                                    "search_offset cannot be used without " +
+                                    "timestamp")
+
     for i in query:
-        if i.field == 'timestamp':
-            has_timestamp = True
-            if i.op not in ('lt', 'le', 'gt', 'ge'):
-                raise wsme.exc.InvalidInput('op', i.op,
-                                            'unimplemented operator for %s' %
-                                            i.field)
-        else:
+        if i.field not in ('timestamp', 'search_offset'):
             if i.op == 'eq':
-                if i.field == 'search_offset':
-                    has_timestamp = True
-                elif i.field == 'enabled':
+                if i.field == 'enabled':
                     i._get_value_as_type('boolean')
-                elif i.field.startswith('metadata.'):
-                    i._get_value_as_type()
-                elif i.field.startswith('resource_metadata.'):
+                elif (i.field.startswith('metadata.') or
+                      i.field.startswith('resource_metadata.')):
                     i._get_value_as_type()
                 else:
                     key = translation.get(i.field, i.field)
@@ -355,14 +361,30 @@ def _validate_query(query, db_func, internal_keys=[]):
                                             'unimplemented operator for %s' %
                                             i.field)
 
-    if has_timestamp and not ('start' in valid_keys or
-                              'start_timestamp' in valid_keys):
-        raise wsme.exc.UnknownArgument('timestamp',
-                                       "not valid for this resource")
+
+def _validate_timestamp_fields(query, field_name, operator_list,
+                               is_timestamp_valid):
+    for item in query:
+        if item.field == field_name:
+            #If *timestamp* or *search_offset* field was specified in the
+            #query, but timestamp is not supported on that resource, on
+            #which the query was invoked, then raise an exception.
+            if not is_timestamp_valid:
+                raise wsme.exc.UnknownArgument(field_name,
+                                               "not valid for " +
+                                               "this resource")
+            if item.op not in operator_list:
+                raise wsme.exc.InvalidInput('op', item.op,
+                                            'unimplemented operator for %s' %
+                                            item.field)
+            return True
+    return False
 
 
-def _query_to_kwargs(query, db_func, internal_keys=[]):
-    _validate_query(query, db_func, internal_keys=internal_keys)
+def _query_to_kwargs(query, db_func, internal_keys=[],
+                     is_timestamp_valid=True):
+    _validate_query(query, db_func, internal_keys=internal_keys,
+                    is_timestamp_valid=is_timestamp_valid)
     query = _sanitize_query(query, db_func)
     internal_keys.append('self')
     valid_keys = set(inspect.getargspec(db_func)[0]) - set(internal_keys)
@@ -482,7 +504,13 @@ def _flatten_metadata(metadata):
     to unicode strings.
     """
     if metadata:
-        return dict((k, unicode(v))
+        # After changing recursive_keypairs` output we need to keep
+        # flattening output unchanged.
+        # Example: recursive_keypairs({'a': {'b':{'c':'d'}}}, '.')
+        # output before: a.b:c=d
+        # output now: a.b.c=d
+        # So to keep the first variant just replace all dots except the first
+        return dict((k.replace('.', ':').replace(':', '.', 1), unicode(v))
                     for k, v in utils.recursive_keypairs(metadata,
                                                          separator='.')
                     if type(v) is not set)
@@ -649,7 +677,7 @@ class Statistics(_Base):
         # "invalid."
         #
         # If the timestamps are invalid, return None as a
-        # sentinal indicating that there is something "funny"
+        # sentinel indicating that there is something "funny"
         # about the range.
         if (self.duration_start and
                 self.duration_end and
@@ -859,7 +887,9 @@ class MetersController(rest.RestController):
 
         :param q: Filter rules for the meters to be returned.
         """
-        kwargs = _query_to_kwargs(q, pecan.request.storage_conn.get_meters)
+        #Timestamp field is not supported for Meter queries
+        kwargs = _query_to_kwargs(q, pecan.request.storage_conn.get_meters,
+                                  is_timestamp_valid=False)
         return [Meter.from_db_model(m)
                 for m in pecan.request.storage_conn.get_meters(**kwargs)]
 
@@ -993,10 +1023,9 @@ class ComplexQuery(_Base):
                    )
 
 
-def _list_to_regexp(items):
+def _list_to_regexp(items, regexp_prefix=""):
     regexp = ["^%s$" % item for item in items]
-    regexp = "|".join(regexp)
-    regexp = "(?i)" + regexp
+    regexp = regexp_prefix + "|".join(regexp)
     return regexp
 
 
@@ -1004,10 +1033,11 @@ class ValidatedComplexQuery(object):
     complex_operators = ["and", "or"]
     order_directions = ["asc", "desc"]
     simple_ops = ["=", "!=", "<", ">", "<=", "=<", ">=", "=>"]
+    regexp_prefix = "(?i)"
 
-    complex_ops = _list_to_regexp(complex_operators)
-    simple_ops = _list_to_regexp(simple_ops)
-    order_directions = _list_to_regexp(order_directions)
+    complex_ops = _list_to_regexp(complex_operators, regexp_prefix)
+    simple_ops = _list_to_regexp(simple_ops, regexp_prefix)
+    order_directions = _list_to_regexp(order_directions, regexp_prefix)
 
     schema_value = {
         "oneOf": [{"type": "string"},
@@ -1062,8 +1092,22 @@ class ValidatedComplexQuery(object):
             "maxProperties": 1}}
 
     timestamp_fields = ["timestamp", "state_timestamp"]
+    name_mapping = {"user": "user_id",
+                    "project": "project_id",
+                    "resource": "resource_id"}
 
-    def __init__(self, query):
+    def __init__(self, query, db_model, additional_valid_keys):
+        valid_keys = db_model.get_field_names()
+        valid_keys = list(valid_keys) + additional_valid_keys
+        valid_fields = _list_to_regexp(valid_keys)
+
+        self.schema_field["patternProperties"] = {
+            valid_fields: self.schema_value}
+
+        self.orderby_schema["items"]["patternProperties"] = {
+            valid_fields: {"type": "string",
+                           "pattern": self.order_directions}}
+
         self.original_query = query
 
     def validate(self, visibility_field):
@@ -1076,6 +1120,7 @@ class ValidatedComplexQuery(object):
             self._validate_filter(self.filter_expr)
             self._replace_isotime_with_datetime(self.filter_expr)
             self._convert_operator_to_lower_case(self.filter_expr)
+            self._normalize_field_names_for_db_model(self.filter_expr)
 
         self._force_visibility(visibility_field)
 
@@ -1085,6 +1130,7 @@ class ValidatedComplexQuery(object):
             self.orderby = json.loads(self.original_query.orderby)
             self._validate_orderby(self.orderby)
             self._convert_orderby_to_lower_case(self.orderby)
+            self._normalize_field_names_in_orderby(self.orderby)
 
         if self.original_query.limit is wtypes.Unset:
             self.limit = None
@@ -1099,6 +1145,10 @@ class ValidatedComplexQuery(object):
     def _convert_orderby_to_lower_case(orderby):
         for orderby_field in orderby:
             utils.lowercase_values(orderby_field)
+
+    def _normalize_field_names_in_orderby(self, orderby):
+        for orderby_field in orderby:
+            self._replace_field_names(orderby_field)
 
     def _traverse_postorder(self, tree, visitor):
         op = tree.keys()[0]
@@ -1149,6 +1199,21 @@ class ValidatedComplexQuery(object):
                 subfilter[op][field] = date_time
 
         self._traverse_postorder(filter_expr, replace_isotime)
+
+    def _normalize_field_names_for_db_model(self, filter_expr):
+        def _normalize_field_names(subfilter):
+            op = subfilter.keys()[0]
+            if op.lower() not in self.complex_operators:
+                self._replace_field_names(subfilter.values()[0])
+        self._traverse_postorder(filter_expr,
+                                 _normalize_field_names)
+
+    def _replace_field_names(self, subfilter):
+        field = subfilter.keys()[0]
+        value = subfilter[field]
+        if field in self.name_mapping:
+            del subfilter[field]
+            subfilter[self.name_mapping[field]] = value
 
     def _convert_operator_to_lower_case(self, filter_expr):
         self._traverse_postorder(filter_expr, utils.lowercase_keys)
@@ -1308,10 +1373,12 @@ class AlarmThresholdRule(_Base):
         if not threshold_rule.query:
             threshold_rule.query = []
 
-        timestamp_keys = ['timestamp', 'start', 'start_timestamp' 'end',
-                          'end_timestamp']
+        #Timestamp is not allowed for AlarmThresholdRule query, as the alarm
+        #evaluator will construct timestamp bounds for the sequence of
+        #statistics queries as the sliding evaluation window advances
+        #over time.
         _validate_query(threshold_rule.query, storage.SampleFilter.__init__,
-                        internal_keys=timestamp_keys)
+                        is_timestamp_valid=False)
         return threshold_rule
 
     @property
@@ -1356,8 +1423,8 @@ class AlarmCombinationRule(_Base):
 
     @property
     def default_description(self):
-        return _('Combined state of alarms %s') % self.operator.join(
-            self.alarm_ids)
+        joiner = ' %s ' % self.operator
+        return _('Combined state of alarms %s') % joiner.join(self.alarm_ids)
 
     def as_dict(self):
         return self.as_dict_from_keys(['operator', 'alarm_ids'])
@@ -1798,8 +1865,10 @@ class AlarmsController(rest.RestController):
 
         :param q: Filter rules for the alarms to be returned.
         """
+        #Timestamp is not supported field for Simple Alarm queries
         kwargs = _query_to_kwargs(q,
-                                  pecan.request.storage_conn.get_alarms)
+                                  pecan.request.storage_conn.get_alarms,
+                                  is_timestamp_valid=False)
         return [Alarm.from_db_model(m)
                 for m in pecan.request.storage_conn.get_alarms(**kwargs)]
 
@@ -2043,7 +2112,9 @@ class QuerySamplesController(rest.RestController):
 
         :param body: Query rules for the samples to be returned.
         """
-        query = ValidatedComplexQuery(body)
+        query = ValidatedComplexQuery(body,
+                                      storage.models.Sample,
+                                      ["user", "project", "resource"])
         query.validate(visibility_field="project_id")
         conn = pecan.request.storage_conn
         return [Sample.from_db_model(s)
@@ -2052,16 +2123,40 @@ class QuerySamplesController(rest.RestController):
                                             query.limit)]
 
 
+class QueryAlarmHistoryController(rest.RestController):
+    """Provides complex query possibilites for alarm history
+    """
+    @wsme_pecan.wsexpose([AlarmChange], body=ComplexQuery)
+    def post(self, body):
+        """Define query for retrieving AlarmChange data.
+
+        :param body: Query rules for the alarm history to be returned.
+        """
+        query = ValidatedComplexQuery(body,
+                                      storage.models.AlarmChange,
+                                      ["user", "project"])
+        query.validate(visibility_field="on_behalf_of")
+        conn = pecan.request.storage_conn
+        return [AlarmChange.from_db_model(s)
+                for s in conn.query_alarm_history(query.filter_expr,
+                                                  query.orderby,
+                                                  query.limit)]
+
+
 class QueryAlarmsController(rest.RestController):
     """Provides complex query possibilities for alarms
     """
+    history = QueryAlarmHistoryController()
+
     @wsme_pecan.wsexpose([Alarm], body=ComplexQuery)
     def post(self, body):
         """Define query for retrieving Alarm data.
 
         :param body: Query rules for the alarms to be returned.
         """
-        query = ValidatedComplexQuery(body)
+        query = ValidatedComplexQuery(body,
+                                      storage.models.Alarm,
+                                      ["user", "project"])
         query.validate(visibility_field="project_id")
         conn = pecan.request.storage_conn
         return [Alarm.from_db_model(s)

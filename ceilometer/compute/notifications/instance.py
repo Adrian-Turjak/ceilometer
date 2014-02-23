@@ -22,8 +22,7 @@
 
 from ceilometer.compute import notifications
 from ceilometer import sample
-
-from ceilometer import vm_states
+from ceilometer.compute import vm_states
 
 
 class InstanceScheduled(notifications.ComputeNotificationBase):
