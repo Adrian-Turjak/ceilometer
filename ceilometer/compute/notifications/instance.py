@@ -132,10 +132,9 @@ class InstanceFlavorID(ComputeInstanceNotificationBase):
     event_types = ['compute.instance.create.end',
                    'compute.instance.delete.end',
                    'compute.instance.resize.*']
-    
 
     def process_notification(self, message):
-        
+
         yield sample.Sample.from_notification(
             name='flavor',
             type=sample.TYPE_GAUGE,

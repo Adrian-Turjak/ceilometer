@@ -876,9 +876,6 @@ class MetersController(rest.RestController):
 
     @pecan.expose()
     def _lookup(self, meter_name, *remainder):
-        # NOTE(gordc): drop last path if empty (Bug #1202739)
-        if remainder and not remainder[-1]:
-            remainder = remainder[:-1]
         return MeterController(meter_name), remainder
 
     @wsme_pecan.wsexpose([Meter], [Query])
@@ -940,6 +937,7 @@ class Sample(_Base):
                    user_id=m.user_id,
                    project_id=m.project_id,
                    resource_id=m.resource_id,
+                   source=m.source,
                    timestamp=m.timestamp,
                    metadata=_flatten_metadata(m.resource_metadata))
 
@@ -949,6 +947,7 @@ class Sample(_Base):
                    meter='instance',
                    type='gauge',
                    unit='instance',
+                   volume=1,
                    resource_id='bd9431c1-8d69-4ad3-803a-8d4a6b89fd36',
                    project_id='35b17138-b364-4e6a-a131-8f3099c5be68',
                    user_id='efd87807-12d2-4b38-9c70-5f5c2ac427ff',
@@ -1787,8 +1786,6 @@ class AlarmsController(rest.RestController):
 
     @pecan.expose()
     def _lookup(self, alarm_id, *remainder):
-        if remainder and not remainder[-1]:
-            remainder = remainder[:-1]
         return AlarmController(alarm_id), remainder
 
     def _record_creation(self, conn, data, alarm_id, now):

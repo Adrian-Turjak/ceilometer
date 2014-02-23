@@ -52,6 +52,7 @@ INSTANCE_CREATE_END = {
                  u'instance_id': u'9f9d01b9-4a58-4271-9e27-398b21ab20d1',
                  u'instance_type': u'm1.tiny',
                  u'instance_type_id': 2,
+                 u'instance_flavor_id': 2,
                  u'launched_at': u'2012-05-08 20:23:47.985999',
                  u'memory_mb': 512,
                  u'state': u'active',
@@ -96,6 +97,7 @@ INSTANCE_DELETE_START = {
                  u'instance_id': u'9f9d01b9-4a58-4271-9e27-398b21ab20d1',
                  u'instance_type': u'm1.tiny',
                  u'instance_type_id': 2,
+                 u'instance_flavor_id': 2,
                  u'launched_at': u'2012-05-08 20:23:47',
                  u'memory_mb': 512,
                  u'state': u'active',
@@ -143,6 +145,7 @@ INSTANCE_EXISTS = {
                  u'instance_id': u'3a513875-95c9-4012-a3e7-f90c678854e5',
                  u'instance_type': u'm1.tiny',
                  u'instance_type_id': 2,
+                 u'instance_flavor_id': 2,
                  u'launched_at': u'2012-05-07 23:01:27',
                  u'memory_mb': 512,
                  u'state': u'active',
@@ -188,6 +191,7 @@ INSTANCE_FINISH_RESIZE_END = {
                  u'availability_zone': None,
                  u'ephemeral_gb': 0,
                  u'instance_type_id': 5,
+                 u'instance_flavor_id': 5,
                  u'deleted_at': u'',
                  u'fixed_ips': [{u'floating_ips': [],
                                  u'label': u'private',
@@ -251,6 +255,7 @@ INSTANCE_RESIZE_REVERT_END = {
                  u'availability_zone': None,
                  u'ephemeral_gb': 0,
                  u'instance_type_id': 2,
+                 u'instance_flavor_id': 2,
                  u'deleted_at': u'',
                  u'reservation_id': u'r-u3fvim06',
                  u'memory_mb': 512,
@@ -308,6 +313,7 @@ INSTANCE_DELETE_SAMPLES = {
                  u'availability_zone': None,
                  u'ephemeral_gb': 0,
                  u'instance_type_id': 2,
+                 u'instance_flavor_id': 2,
                  u'deleted_at': u'',
                  u'reservation_id': u'r-u3fvim06',
                  u'memory_mb': 512,
@@ -438,6 +444,13 @@ class TestNotifications(test.BaseTestCase):
         c = counters[0]
         self.assertEqual(c.volume, 1)
 
+    def test_instance_create_flavor_id(self):
+        ic = instance.InstanceFlavorID()
+        counters = list(ic.process_notification(INSTANCE_CREATE_END))
+        self.assertEqual(len(counters), 1)
+        c = counters[0]
+        self.assertEqual(c.volume, 2)
+
     def test_instance_create_memory(self):
         ic = instance.Memory()
         counters = list(ic.process_notification(INSTANCE_CREATE_END))
@@ -502,6 +515,13 @@ class TestNotifications(test.BaseTestCase):
         self.assertEqual(c.volume, 1)
         self.assertEqual(c.name, 'instance:m1.small')
 
+    def test_instance_finish_resize_flavor_id(self):
+        ic = instance.InstanceFlavorID()
+        counters = list(ic.process_notification(INSTANCE_FINISH_RESIZE_END))
+        self.assertEqual(len(counters), 1)
+        c = counters[0]
+        self.assertEqual(c.volume, 5)
+
     def test_instance_finish_resize_memory(self):
         ic = instance.Memory()
         counters = list(ic.process_notification(INSTANCE_FINISH_RESIZE_END))
@@ -532,6 +552,13 @@ class TestNotifications(test.BaseTestCase):
         c = counters[0]
         self.assertEqual(c.volume, 1)
         self.assertEqual(c.name, 'instance:m1.tiny')
+
+    def test_instance_resize_finish_flavor_id(self):
+        ic = instance.InstanceFlavorID()
+        counters = list(ic.process_notification(INSTANCE_RESIZE_REVERT_END))
+        self.assertEqual(len(counters), 1)
+        c = counters[0]
+        self.assertEqual(c.volume, 2)
 
     def test_instance_resize_finish_memory(self):
         ic = instance.Memory()
