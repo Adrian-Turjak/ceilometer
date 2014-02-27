@@ -25,7 +25,7 @@ from oslo.config import cfg
 from ceilometer import sample
 from ceilometer import plugin
 
-from ceilometer.vm_states import states
+from ceilometer.compute.vm_states import states
 
 
 OPTS = [
@@ -50,27 +50,6 @@ class ComputeNotificationBase(plugin.NotificationBase):
                 topics=set(topic + ".info"
                            for topic in conf.notification_topics)),
         ]
-
-
-class InstanceState(ComputeNotificationBase):
-    """Convert compute.instance.* notifications into Samples
-    """
-
-    event_types = ['compute.instance.*']
-
-    def process_notification(self, message):
-
-        state = message['payload']['state']
-
-        yield sample.Sample.from_notification(
-            name='state',
-            type=sample.TYPE_GAUGE,
-            unit='state',
-            volume=states[state],
-            user_id=message['payload']['user_id'],
-            project_id=message['payload']['tenant_id'],
-            resource_id=message['payload']['instance_id'],
-            message=message)
 
 
 class InstanceScheduled(ComputeNotificationBase):
@@ -103,6 +82,22 @@ class Instance(ComputeInstanceNotificationBase):
             type=sample.TYPE_GAUGE,
             unit='instance',
             volume=1,
+            user_id=message['payload']['user_id'],
+            project_id=message['payload']['tenant_id'],
+            resource_id=message['payload']['instance_id'],
+            message=message)
+
+
+class InstanceState(ComputeInstanceNotificationBase):
+    def process_notification(self, message):
+
+        state = message['payload']['state']
+
+        yield sample.Sample.from_notification(
+            name='state',
+            type=sample.TYPE_GAUGE,
+            unit='state',
+            volume=states[state],
             user_id=message['payload']['user_id'],
             project_id=message['payload']['tenant_id'],
             resource_id=message['payload']['instance_id'],
@@ -174,6 +169,25 @@ class InstanceFlavor(ComputeInstanceNotificationBase):
                 project_id=message['payload']['tenant_id'],
                 resource_id=message['payload']['instance_id'],
                 message=message)
+
+
+class InstanceFlavorID(ComputeInstanceNotificationBase):
+
+    event_types = ['compute.instance.create.end',
+                   'compute.instance.delete.end',
+                   'compute.instance.resize.*']
+
+    def process_notification(self, message):
+
+        yield sample.Sample.from_notification(
+            name='flavor',
+            type=sample.TYPE_GAUGE,
+            unit='flavor.id',
+            volume=message['payload']['instance_flavor_id'],
+            user_id=message['payload']['user_id'],
+            project_id=message['payload']['tenant_id'],
+            resource_id=message['payload']['instance_id'],
+            message=message)
 
 
 class InstanceDelete(ComputeInstanceNotificationBase):
